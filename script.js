@@ -1,9 +1,25 @@
+// Global variables
+const LOG_ENABLED = true;
+const IFRAME_URL = 'https://hcm-eu10-sales.hr.cloud.sap/sf/liveprofile?mdfObjectType=cust_kpr2';
+
+function logInfo(logMessage) {
+    if (LOG_ENABLED) {
+        console.log(logMessage);
+    }
+}
+
+function logError(errorMessage) {
+    if (LOG_ENABLED) {
+        console.error(errorMessage);
+    }
+}
+
 function createModal() {
     const background = createBackground();
     const modalContent = createModalContent();
     const closeModal = createCloseModal();
     const iframeContainer = createIframeContainer();
-    const iframe = createIframe('https://hcm-eu10-sales.hr.cloud.sap/sf/liveprofile?mdfObjectType=cust_kpr2');
+    const iframe = createIframe(IFRAME_URL);
 
     document.body.appendChild(background);
     background.appendChild(modalContent);
@@ -11,37 +27,31 @@ function createModal() {
     modalContent.appendChild(iframeContainer);
     iframeContainer.appendChild(iframe);
 
-    iframe.onload = () => {
-        adjustIframeSize(iframe);
-        console.log("Iframe załadowany, rozpoczynam sekwencję kliknięć");
-        // Skrócony czas oczekiwania na załadowanie strony
-        setTimeout(() => startClickSequence(iframe), 800);
-    };
-
-    handleContentContainerStyle(iframe, background, iframeContainer);
-    checkAndHideIframeElements(iframe, background, iframeContainer);
+    handleContentContainerStyle(iframe);
     closeModal.addEventListener('click', () => handleCloseModalClick(background, iframeContainer));
     window.addEventListener('click', (event) => handleWindowClick(event, background, iframeContainer));
     setupAcceptButtonListener(iframe, background, iframeContainer);
+
+    iframe.onload = () => handleIframeLoad(iframe);
 }
 
 // Główna funkcja sterująca sekwencją kliknięć
 function startClickSequence(iframe) {
-    console.log("Rozpoczynam sekwencję kliknięć");
+    logInfo("Rozpoczynam sekwencję kliknięć");
 
     // Funkcja sprawdzająca dostępność elementów w regularnych odstępach czasu
     const checkInterval = setInterval(() => {
         try {
             const iframeDocument = iframe.contentDocument || iframe.contentWindow.document;
             if (!iframeDocument) {
-                console.log("Dokument iframe niedostępny, próbuję ponownie...");
+                logInfo("Dokument iframe niedostępny, próbuję ponownie...");
                 return;
             }
 
             // Szukamy pierwszego przycisku
             const firstButton = findSAPButton(iframeDocument, "__button2");
             if (firstButton) {
-                console.log("Znaleziono przycisk Edytuj - ID: __button2");
+                logInfo("Znaleziono przycisk Edytuj - ID: __button2");
 
                 // Zatrzymujemy interwał po znalezieniu przycisku
                 clearInterval(checkInterval);
@@ -49,9 +59,9 @@ function startClickSequence(iframe) {
                 // Klikamy w przycisk na różne sposoby
                 triggerSAPButtonClick(firstButton);
 
-                // Po kliknięciu pierwszego przycisku, ustawiamy timeout na kliknięcie drugiego
+                // Po kliknięciu pierwszego przycisku ustawiamy timeout na kliknięcie drugiego
                 setTimeout(() => {
-                    console.log("Szukam drugiego przycisku...");
+                    logInfo("Szukam drugiego przycisku...");
                     const secondCheckInterval = setInterval(() => {
                         try {
                             const updatedDoc = iframe.contentDocument || iframe.contentWindow.document;
@@ -59,17 +69,16 @@ function startClickSequence(iframe) {
 
                             const secondButton = findSAPButton(updatedDoc, "__button12");
                             if (secondButton) {
-                                console.log("Znaleziono przycisk Dodaj - ID: __button12");
+                                logInfo("Znaleziono przycisk Dodaj - ID: __button12");
 
                                 clearInterval(secondCheckInterval);
                                 triggerSAPButtonClick(secondButton);
 
-                                // WAŻNE: Monitoruj zmiany DOM po kliknięciu drugiego przycisku
-                                // aby wykryć moment pojawienia się przycisków Anuluj/Zapisz
+                                // WAŻNE: Monitoruj zmiany DOM po kliknięciu drugiego przycisku, aby wykryć moment pojawienia się przycisków
                                 monitorDialogAppearance(iframe);
                             }
                         } catch (e) {
-                            console.error("Błąd podczas szukania drugiego przycisku:", e);
+                            logError("Błąd podczas szukania drugiego przycisku: " + e);
                         }
                     }, 300);
 
@@ -77,7 +86,7 @@ function startClickSequence(iframe) {
                 }, 800);
             }
         } catch (e) {
-            console.error("Błąd podczas sprawdzania przycisków:", e);
+            logError("Błąd podczas sprawdzania przycisków: " + e);
         }
     }, 300);
 
@@ -85,13 +94,14 @@ function startClickSequence(iframe) {
 }
 
 // Nowa funkcja do ciągłego monitorowania zmian DOM w poszukiwaniu przycisków dialogu
+// Funkcja do monitorowania pojawienia się przycisków dialogu
 function monitorDialogAppearance(iframe) {
-    console.log("Rozpoczynam monitorowanie pojawienia się przycisków Anuluj/Zapisz - nowa metoda");
+    logInfo("Rozpoczynam monitorowanie pojawienia się przycisków Anuluj/Zapisz - nowa metoda");
 
     let buttonCheckCount = 0;
     const maxChecks = 300; // Zwiększona liczba prób
 
-    // Sprawdzaj regularnie czy przyciski się pojawiły
+    // Sprawdzaj regularnie, czy przyciski się pojawiły
     const dialogCheckInterval = setInterval(() => {
         buttonCheckCount++;
 
@@ -100,167 +110,31 @@ function monitorDialogAppearance(iframe) {
             if (!iframeDocument) return;
 
             if (buttonCheckCount % 10 === 0) {
-                console.log(`Próba #${buttonCheckCount} wyszukania przycisków Anuluj/Zapisz`);
+                logInfo(`Próba #${buttonCheckCount} wyszukania przycisków Anuluj/Zapisz`);
             }
 
-            // Szukaj przycisków po różnych atrybutach, które mogą być bardziej stabilne
+            // Szukaj przycisków i dodaj obsługę zdarzeń
+            const foundButtons = findDialogButtons(iframeDocument);
 
-            // 1. Szukaj po atrybutach data-help-id
-            const cancelByHelpId = iframeDocument.querySelector('button[data-help-id="editPageCancelAddButton"]');
-            const saveByHelpId = iframeDocument.querySelector('button[data-help-id="editPageSaveButton"]');
-
-            // 2. Szukaj po title
-            const cancelByTitle = iframeDocument.querySelector('button[title="Anuluj"]');
-            const saveByTitle = iframeDocument.querySelector('button[title="Zapisz"]');
-
-            // 3. Szukaj po tekście przycisku (sprawdzamy wszystkie przyciski)
-            let cancelByText = null;
-            let saveByText = null;
-
-            const buttons = iframeDocument.querySelectorAll('button');
-            for (const button of buttons) {
-                const buttonText = button.textContent?.trim();
-                if (buttonText && (buttonText.includes('Anuluj'))) {
-                    cancelByText = button;
-                } else if (buttonText && (buttonText.includes('Zapisz'))) {
-                    saveByText = button;
-                }
-            }
-
-            // Wybierz znalezione przyciski (w kolejności preferencji)
-            const cancelButton = cancelByHelpId || cancelByTitle || cancelByText;
-            const saveButton = saveByHelpId || saveByTitle || saveByText;
-
-            // Dodaj bardziej szczegółowe debugowanie
-            if (cancelButton || saveButton) {
-                if (cancelButton) {
-                    const cancelAttrs = {
-                        id: cancelButton.id,
-                        helpId: cancelButton.getAttribute('data-help-id'),
-                        title: cancelButton.getAttribute('title'),
-                        text: cancelButton.textContent?.trim(),
-                        className: cancelButton.className
-                    };
-                    console.log("Znaleziono przycisk Anuluj:", cancelAttrs);
-
-                    // Bezpośrednie podpięcie funkcji zamykającej
-                    if (!cancelButton._hasCloseListener) {
-                        // Dodajemy podwójne zabezpieczenie - pole prywatne _hasCloseListener
-                        // oraz atrybut data-listener
-                        cancelButton._hasCloseListener = true;
-                        cancelButton.setAttribute('data-listener', 'true');
-
-                        // Użyjmy prostszej konstrukcji dla funkcji
-                        const closeFunc = function() {
-                            console.log("KLIKNIĘCIE ANULUJ - zamykam modal bezpośrednio");
-                            const background = document.getElementById('myModal');
-                            const iframeContainer = document.getElementById('iframeContainer');
-
-                            if (background) background.style.display = 'none';
-                            if (iframeContainer) iframeContainer.innerHTML = '';
-                        };
-
-                        // Dodajemy najprostszy event listener
-                        cancelButton.onclick = closeFunc;
-                        console.log("Dodano onclick do przycisku Anuluj");
-
-                        // Dodatkowo, spróbujmy dodać alternatywne nasłuchiwanie
-                        cancelButton.addEventListener('click', closeFunc);
-                        console.log("Dodano addEventListener do przycisku Anuluj");
-                    }
+            if (foundButtons.cancelButton || foundButtons.saveButton) {
+                // Dodaj obsługę zdarzeń do znalezionych przycisków
+                if (foundButtons.cancelButton) {
+                    addCloseHandlerToButton(foundButtons.cancelButton, "Anuluj");
                 }
 
-                if (saveButton) {
-                    const saveAttrs = {
-                        id: saveButton.id,
-                        helpId: saveButton.getAttribute('data-help-id'),
-                        title: saveButton.getAttribute('title'),
-                        text: saveButton.textContent?.trim(),
-                        className: saveButton.className
-                    };
-                    console.log("Znaleziono przycisk Zapisz:", saveAttrs);
-
-                    // Bezpośrednie podpięcie funkcji zamykającej
-                    if (!saveButton._hasCloseListener) {
-                        // Dodajemy podwójne zabezpieczenie
-                        saveButton._hasCloseListener = true;
-                        saveButton.setAttribute('data-listener', 'true');
-
-                        // Użyjmy prostszej konstrukcji dla funkcji
-                        const closeFunc = function() {
-                            console.log("KLIKNIĘCIE ZAPISZ - zamykam modal bezpośrednio");
-                            const background = document.getElementById('myModal');
-                            const iframeContainer = document.getElementById('iframeContainer');
-
-                            if (background) background.style.display = 'none';
-                            if (iframeContainer) iframeContainer.innerHTML = '';
-                        };
-
-                        // Dodajemy najprostszy event listener
-                        saveButton.onclick = closeFunc;
-                        console.log("Dodano onclick do przycisku Zapisz");
-
-                        // Dodatkowo, spróbujmy dodać alternatywne nasłuchiwanie
-                        saveButton.addEventListener('click', closeFunc);
-                        console.log("Dodano addEventListener do przycisku Zapisz");
-                    }
+                if (foundButtons.saveButton) {
+                    addCloseHandlerToButton(foundButtons.saveButton, "Zapisz");
                 }
             } else if (buttonCheckCount >= maxChecks) {
-                console.log("Osiągnięto maksymalną liczbę prób. Zatrzymuję sprawdzanie.");
+                logInfo("Osiągnięto maksymalną liczbę prób. Zatrzymuję sprawdzanie.");
                 clearInterval(dialogCheckInterval);
             }
 
             // Szukaj również przycisków w zagnieżdżonych iframe
-            const nestedIframes = iframeDocument.querySelectorAll('iframe');
-            for (const nestedIframe of nestedIframes) {
-                try {
-                    const nestedDoc = nestedIframe.contentDocument || nestedIframe.contentWindow.document;
-                    if (nestedDoc) {
-                        // Rekurencyjne sprawdzenie zagnieżdżonych iframe
-                        const nestedButtons = nestedDoc.querySelectorAll('button');
-                        for (const button of nestedButtons) {
-                            const buttonText = button.textContent?.trim();
-                            if (buttonText && buttonText.includes('Anuluj') && !button._hasCloseListener) {
-                                button._hasCloseListener = true;
+            processNestedIframes(iframeDocument);
 
-                                // Bezpośrednia funkcja zamykająca
-                                const closeFunc = function() {
-                                    console.log("KLIKNIĘCIE ZAGNIEŻDŻONY ANULUJ - zamykam modal bezpośrednio");
-                                    const background = document.getElementById('myModal');
-                                    const iframeContainer = document.getElementById('iframeContainer');
-
-                                    if (background) background.style.display = 'none';
-                                    if (iframeContainer) iframeContainer.innerHTML = '';
-                                };
-
-                                button.onclick = closeFunc;
-                                button.addEventListener('click', closeFunc);
-                                console.log("Znaleziono przycisk Anuluj w zagnieżdżonym iframe");
-                            } else if (buttonText && buttonText.includes('Zapisz') && !button._hasCloseListener) {
-                                button._hasCloseListener = true;
-
-                                // Bezpośrednia funkcja zamykająca
-                                const closeFunc = function() {
-                                    console.log("KLIKNIĘCIE ZAGNIEŻDŻONY ZAPISZ - zamykam modal bezpośrednio");
-                                    const background = document.getElementById('myModal');
-                                    const iframeContainer = document.getElementById('iframeContainer');
-
-                                    if (background) background.style.display = 'none';
-                                    if (iframeContainer) iframeContainer.innerHTML = '';
-                                };
-
-                                button.onclick = closeFunc;
-                                button.addEventListener('click', closeFunc);
-                                console.log("Znaleziono przycisk Zapisz w zagnieżdżonym iframe");
-                            }
-                        }
-                    }
-                } catch (e) {
-                    // Ignoruj błędy dostępu do iframe z innego źródła
-                }
-            }
         } catch (e) {
-            console.error("Błąd podczas monitorowania dialogu:", e);
+            logError("Błąd podczas monitorowania dialogu: " + e);
             if (buttonCheckCount >= maxChecks) {
                 clearInterval(dialogCheckInterval);
             }
@@ -270,75 +144,98 @@ function monitorDialogAppearance(iframe) {
     // Zatrzymaj sprawdzanie po dłuższym czasie
     setTimeout(() => {
         clearInterval(dialogCheckInterval);
-        console.log("Zakończono monitorowanie przycisków po upływie maksymalnego czasu");
+        logInfo("Zakończono monitorowanie przycisków po upływie maksymalnego czasu");
     }, 300000); // 5 minut
 }
 
-// Funkcja sprawdzająca, czy przycisk Zapisz stał się aktywny
-function checkSaveButtonActivation(saveButton, iframe) {
-    if (!saveButton) return;
+// Funkcja wyszukująca przyciski Anuluj/Zapisz w dokumencie
+function findDialogButtons(document) {
+    // 1. Szukaj po atrybutach data-help-id
+    const cancelByHelpId = document.querySelector('button[data-help-id="editPageCancelAddButton"]');
+    const saveByHelpId = document.querySelector('button[data-help-id="editPageSaveButton"]');
 
-    console.log("Monitoruję aktywację przycisku Zapisz");
+    // 2. Szukaj po title
+    const cancelByTitle = document.querySelector('button[title="Anuluj"]');
+    const saveByTitle = document.querySelector('button[title="Zapisz"]');
 
-    // Sprawdzaj regularnie czy przycisk stał się aktywny
-    const activationCheckInterval = setInterval(() => {
-        try {
-            // Jeśli przycisk nie jest już nieaktywny (disabled)
-            if (!saveButton.disabled) {
-                console.log("Przycisk Zapisz jest teraz aktywny!");
-                clearInterval(activationCheckInterval);
-            }
-        } catch (e) {
-            console.error("Błąd podczas sprawdzania aktywacji przycisku Zapisz:", e);
-            clearInterval(activationCheckInterval);
+    // 3. Szukaj po tekście przycisku (sprawdzamy wszystkie przyciski)
+    let cancelByText = null;
+    let saveByText = null;
+
+    const buttons = document.querySelectorAll('button');
+    for (const button of buttons) {
+        const buttonText = button.textContent?.trim();
+        if (buttonText?.includes('Anuluj')) {
+            cancelByText = button;
+        } else if (buttonText?.includes('Zapisz')) {
+            saveByText = button;
         }
-    }, 500);
+    }
 
-    // Zatrzymaj sprawdzanie po 30 sekundach
-    setTimeout(() => clearInterval(activationCheckInterval), 30000);
+    // Wybierz znalezione przyciski (w kolejności preferencji)
+    const cancelButton = cancelByHelpId || cancelByTitle || cancelByText;
+    const saveButton = saveByHelpId || saveByTitle || saveByText;
+
+    return { cancelButton, saveButton };
 }
 
-// Funkcja zamykająca modal i czyszcząca zasoby
-function closeModalAndCleanup(iframe) {
-    try {
-        const background = document.getElementById('myModal');
-        const iframeContainer = document.getElementById('iframeContainer');
+// Funkcja dodająca obsługę zdarzenia do przycisku
+function addCloseHandlerToButton(button, buttonType) {
+    if (!button._hasCloseListener) {
+        // Dodajemy oznaczenie, że przycisk ma już obsługę zdarzenia
+        button._hasCloseListener = true;
+        button.setAttribute('data-listener', 'true');
 
-        console.log("Zamykam modal - closeModalAndCleanup wywołane");
+        // Przygotuj informacje debugowe
+        const buttonAttrs = {
+            id: button.id,
+            helpId: button.getAttribute('data-help-id'),
+            title: button.getAttribute('title'),
+            text: button.textContent?.trim(),
+            className: button.className
+        };
+        logInfo(`Znaleziono przycisk ${buttonType}: ${JSON.stringify(buttonAttrs)}`);
 
-        if (background) {
-            background.style.display = 'none';
-        }
+        // Funkcja zamykająca modal
+        const closeFunc = function() {
+            logInfo(`KLIKNIĘCIE ${buttonType} - zamykam modal bezpośrednio`);
+            const background = document.getElementById('myModal');
+            const iframeContainer = document.getElementById('iframeContainer');
 
-        if (iframeContainer) {
-            iframeContainer.innerHTML = '';
-        }
-
-        // Dodatkowe czyszczenie na poziomie globalnym
-        const clearTimeouts = () => {
-            // Czyścimy wszystkie timeouty i interwały
-            const highestTimeoutId = setTimeout(() => {}, 0);
-            for (let i = 0; i < highestTimeoutId; i++) {
-                clearTimeout(i);
-            }
-
-            // Czyścimy wszystkie interwały do pewnego limitu
-            const highestIntervalId = setInterval(() => {}, 100000);
-            for (let i = 0; i < highestIntervalId; i++) {
-                clearInterval(i);
-            }
+            if (background) background.style.display = 'none';
+            if (iframeContainer) iframeContainer.innerHTML = '';
         };
 
-        // Wywołaj czyszczenie z opóźnieniem, aby inne handlery miały szansę się wykonać
-        setTimeout(clearTimeouts, 500);
-
-        console.log("Modal został zamknięty");
-    } catch (e) {
-        console.error("Błąd podczas zamykania modalu:", e);
+        // Dodaj obsługę zdarzenia na dwa sposoby dla pewności
+        button.onclick = closeFunc;
+        button.addEventListener('click', closeFunc);
+        logInfo(`Dodano obsługę zdarzenia do przycisku ${buttonType}`);
     }
 }
 
-// Funkcja znajdująca przycisk SAP UI5 po ID
+// Funkcja przetwarzająca zagnieżdżone ramki iframe
+function processNestedIframes(document) {
+    const nestedIframes = document.querySelectorAll('iframe');
+    for (const nestedIframe of nestedIframes) {
+        try {
+            const nestedDoc = nestedIframe.contentDocument || nestedIframe.contentWindow.document;
+            if (nestedDoc) {
+                const nestedButtons = nestedDoc.querySelectorAll('button');
+                for (const button of nestedButtons) {
+                    const buttonText = button.textContent?.trim();
+
+                    if (buttonText?.includes('Anuluj') && !button._hasCloseListener) {
+                        addCloseHandlerToButton(button, "ZAGNIEŻDŻONY Anuluj");
+                    } else if (buttonText?.includes('Zapisz') && !button._hasCloseListener) {
+                        addCloseHandlerToButton(button, "ZAGNIEŻDŻONY Zapisz");
+                    }
+                }
+            }
+        } catch (e) {
+            // Ignoruj błędy dostępu do iframe z innego źródła
+        }
+    }
+}// Funkcja znajdująca przycisk SAP UI5 po ID
 function findSAPButton(doc, buttonId) {
     // Próbujemy najpierw bezpośrednio przez ID
     let button = doc.getElementById(buttonId);
@@ -362,22 +259,30 @@ function findSAPButton(doc, buttonId) {
                 if (frameButton) return frameButton;
             }
         } catch (e) {
-            console.log("Brak dostępu do zawartości iframe:", e);
+            logInfo("Brak dostępu do zawartości iframe: " + e);
         }
     }
-
     return null;
 }
 
 // Funkcja wywołująca kliknięcie na różne sposoby
+// Główna funkcja klikająca przycisk na różne sposoby
 function triggerSAPButtonClick(button) {
-    console.log("Próbuję kliknąć przycisk na różne sposoby");
+    logInfo("Próbuję kliknąć przycisk na różne sposoby");
+    performStandardClick(button);
+    performMouseEventClick(button);
+    performInnerElementClick(button);
+    performScriptExecution(button);
+}
 
-    // Próba 1: Standardowe kliknięcie
+function performStandardClick(button) {
+// Funkcja wykonująca standardowe kliknięcie
     button.click();
-    console.log("Wykonano standardowe kliknięcie");
+    logInfo("Wykonano standardowe kliknięcie");
+}
 
-    // Próba 2: Symulacja zdarzenia myszy
+function performMouseEventClick(button) {
+// Funkcja symulująca zdarzenie myszy
     try {
         const mouseEvent = new MouseEvent('click', {
             bubbles: true,
@@ -385,57 +290,65 @@ function triggerSAPButtonClick(button) {
             view: button.ownerDocument.defaultView
         });
         button.dispatchEvent(mouseEvent);
-        console.log("Wykonano kliknięcie przez MouseEvent");
+        logInfo("Wykonano kliknięcie przez MouseEvent");
     } catch (e) {
-        console.error("Błąd podczas symulacji zdarzenia myszy:", e);
+        logError("Błąd podczas symulacji zdarzenia myszy: " + e);
     }
+}
 
-    // Próba 3: Symulacja zdarzenia UI5 (jeśli SAP UI5 używa własnych zdarzeń)
+function performInnerElementClick(button) {
+// Funkcja klikająca wewnętrzny element (często używany w SAP UI5)
     try {
-        // Sprawdź, czy istnieje wewnętrzny element (często używany w SAP UI5)
         const innerElement = button.querySelector('[id$="-inner"]');
         if (innerElement) {
             innerElement.click();
-            console.log("Wykonano kliknięcie na wewnętrznym elemencie");
+            logInfo("Wykonano kliknięcie na wewnętrznym elemencie");
         }
     } catch (e) {
-        console.error("Błąd podczas klikania wewnętrznego elementu:", e);
+        logError("Błąd podczas klikania wewnętrznego elementu: " + e);
     }
+}
 
-    // Próba 4: Wykonaj skrypt bezpośrednio w kontekście dokumentu
+function performScriptExecution(button) {
+// Funkcja wykonująca skrypt bezpośrednio w kontekście dokumentu
     try {
         const doc = button.ownerDocument;
-        const win = doc.defaultView;
         const script = doc.createElement('script');
         const buttonId = button.id;
-        script.textContent = `
-            (function() {
-                try {
-                    var btn = document.getElementById('${buttonId}');
-                    if (btn) {
-                        console.log('Znaleziono przycisk w skrypcie');
-                        btn.click();
-                        
-                        // Próba wywołania zdarzenia SAP UI5 (jeśli dostępne)
-                        if (window.sap && window.sap.ui) {
-                            var control = sap.ui.getCore().byId('${buttonId}');
-                            if (control && typeof control.firePress === 'function') {
-                                control.firePress();
-                                console.log('Wywołano firePress na kontrolce SAP UI5');
-                            }
-                        }
-                    }
-                } catch(e) {
-                    console.error('Błąd w skrypcie kliknięcia:', e);
-                }
-            })();
-        `;
+        script.textContent = createButtonClickScript(buttonId);
+
         doc.body.appendChild(script);
         doc.body.removeChild(script);
-        console.log("Wykonano skrypt bezpośrednio w dokumencie");
+        logInfo("Wykonano skrypt bezpośrednio w dokumencie");
     } catch (e) {
-        console.error("Błąd podczas wykonywania skryptu w dokumencie:", e);
+        logError("Błąd podczas wykonywania skryptu w dokumencie: " + e);
     }
+}
+
+function createButtonClickScript(buttonId) {
+// Funkcja przygotowująca skrypt do wykonania kliknięcia
+    return `
+        (function() {
+            try {
+                var btn = document.getElementById('${buttonId}');
+                if (btn) {
+                    console.log('Znaleziono przycisk w skrypcie');
+                    btn.click();
+                    
+                    // Próba wywołania zdarzenia SAP UI5 (jeśli dostępne)
+                    if (window.sap && window.sap.ui) {
+                        var control = sap.ui.getCore().byId('${buttonId}');
+                        if (control && typeof control.firePress === 'function') {
+                            control.firePress();
+                            console.log('Wywołano firePress na kontrolce SAP UI5');
+                        }
+                    }
+                }
+            } catch(e) {
+                console.error('Błąd w skrypcie kliknięcia:', e);
+            }
+        })();
+    `;
 }
 
 function createBackground() {
@@ -485,25 +398,14 @@ function createIframe(src) {
     const iframe = document.createElement('iframe');
     iframe.id = 'iframe';
     iframe.src = src;
-    iframe.style.width = '100%';
+    iframe.style.width = '685px';
     iframe.style.height = '500px';
     iframe.style.border = 'none';
     iframe.style.borderRadius = '1.5rem';
     return iframe;
 }
 
-function adjustIframeSize(iframe) {
-    try {
-        const iframeDocument = iframe.contentDocument || iframe.contentWindow.document;
-        if (iframeDocument) {
-            const contentWidth = iframeDocument.body.scrollWidth;
-        }
-    } catch (e) {
-        console.error('Error adjusting iframe size:', e);
-    }
-}
-
-function handleContentContainerStyle(iframe, background, iframeContainer) {
+function handleContentContainerStyle(iframe) {
     const checkContentContainer = setInterval(() => {
         try {
             const iframeDocument = iframe.contentDocument || iframe.contentWindow.document;
@@ -517,47 +419,18 @@ function handleContentContainerStyle(iframe, background, iframeContainer) {
                 }
             }
         } catch (e) {
-            console.error('Error accessing iframe content:', e);
+            logError('Error accessing iframe content: ' + e);
             clearInterval(checkContentContainer);
         }
     }, 500);
 }
 
-function checkAndHideIframeElements(iframe, background, iframeContainer) {
-    console.log("refreshed script")
-    const checkIframeLoaded = setInterval(() => {
-        try {
-            const iframeDocument = iframe.contentDocument || iframe.contentWindow.document;
-            if (iframeDocument) {
-                const cancelBtn = iframeDocument.getElementById('dlgButton_327_');
-                const topNav = iframeDocument.getElementById('renderTopNavFixedWidthV12');
-                const adminBreadcrumbs = iframeDocument.getElementById('admin-breadcrums');
-                const metaDataHeader = iframeDocument.getElementById('4__metaDataHeader');
-                const searchBarContainer = iframeDocument.getElementById('4__searchBarContainer');
-                const header = iframeDocument.getElementById('globalHeaderFullWidthBackground');
-                [header, topNav, adminBreadcrumbs, metaDataHeader, searchBarContainer].forEach(el => {
-                    if (el) el.style.display = 'none';
-                });
 
-                if (cancelBtn) {
-                    cancelBtn.addEventListener('click', () => {
-                        background.style.display = 'none';
-                        iframeContainer.innerHTML = '';
-                    });
-                    clearInterval(checkIframeLoaded);
-                }
-            }
-        } catch (e) {
-            console.error('Cannot find element to hide', e);
-            clearInterval(checkIframeLoaded);
-        }
-    }, 300);
-}
 
 function handleCloseModalClick(background, iframeContainer) {
     background.style.display = 'none';
     iframeContainer.innerHTML = '';
-    console.log("Modal został zamknięty przez przycisk X");
+    logInfo("Modal został zamknięty przez przycisk X");
 }
 
 function setupAcceptButtonListener(iframe, background, iframeContainer) {
@@ -573,7 +446,7 @@ function setupAcceptButtonListener(iframe, background, iframeContainer) {
                 }
             }
         } catch (e) {
-            console.error('Cannot add listener', e);
+            logError('Cannot add listener: ' + e);
             clearInterval(checkButtonListeners);
         }
     }, 300);
@@ -606,6 +479,11 @@ function handleWindowClick(event, background, iframeContainer) {
     if (event.target === background) {
         handleCloseModalClick(background, iframeContainer);
     }
+}
+
+function handleIframeLoad(iframe) {
+    logInfo("Iframe załadowany, rozpoczynam sekwencję kliknięć");
+    setTimeout(() => startClickSequence(iframe), 800);
 }
 
 createModal();
