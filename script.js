@@ -42,7 +42,6 @@ function startClickSequence(iframe) {
             const firstButton = findSAPButton(iframeDocument, "__button2");
             if (firstButton) {
                 console.log("Znaleziono przycisk Edytuj - ID: __button2");
-                console.log("Przycisk klasy:", firstButton.className);
 
                 // Zatrzymujemy interwał po znalezieniu przycisku
                 clearInterval(checkInterval);
@@ -50,7 +49,7 @@ function startClickSequence(iframe) {
                 // Klikamy w przycisk na różne sposoby
                 triggerSAPButtonClick(firstButton);
 
-                // Po kliknięciu pierwszego przycisku, ustawiamy timeout na kliknięcie drugiego - skrócony czas
+                // Po kliknięciu pierwszego przycisku, ustawiamy timeout na kliknięcie drugiego
                 setTimeout(() => {
                     console.log("Szukam drugiego przycisku...");
                     const secondCheckInterval = setInterval(() => {
@@ -61,102 +60,111 @@ function startClickSequence(iframe) {
                             const secondButton = findSAPButton(updatedDoc, "__button12");
                             if (secondButton) {
                                 console.log("Znaleziono przycisk Dodaj - ID: __button12");
-                                console.log("Przycisk klasy:", secondButton.className);
 
                                 clearInterval(secondCheckInterval);
                                 triggerSAPButtonClick(secondButton);
 
-                                // Po kliknięciu drugiego przycisku, ustaw nasłuchiwanie na przyciski Anuluj i Zapisz
-                                setupCloseButtonsListeners(iframe);
+                                // WAŻNE: Monitoruj zmiany DOM po kliknięciu drugiego przycisku
+                                // aby wykryć moment pojawienia się przycisków Anuluj/Zapisz
+                                monitorDialogAppearance(iframe);
                             }
                         } catch (e) {
                             console.error("Błąd podczas szukania drugiego przycisku:", e);
                         }
-                    }, 300); // Sprawdzaj co 0.3 sekundy
+                    }, 300);
 
-                    // Skrócony czas maksymalnego oczekiwania
                     setTimeout(() => clearInterval(secondCheckInterval), 10000);
-                }, 800); // Czekaj 0.8 sekundy po kliknięciu pierwszego przycisku
+                }, 800);
             }
         } catch (e) {
             console.error("Błąd podczas sprawdzania przycisków:", e);
         }
-    }, 300); // Sprawdzaj co 0.3 sekundy
+    }, 300);
 
-    // Skrócony czas maksymalnego oczekiwania
     setTimeout(() => clearInterval(checkInterval), 10000);
 }
 
-// Nowa funkcja do ustawienia nasłuchiwania na przyciski zamykające
-function setupCloseButtonsListeners(iframe) {
-    console.log("Ustawiam nasłuchiwanie na przyciski Anuluj i Zapisz");
+// Nowa funkcja do ciągłego monitorowania zmian DOM w poszukiwaniu przycisków dialogu
+function monitorDialogAppearance(iframe) {
+    console.log("Rozpoczynam monitorowanie pojawienia się dialogu z przyciskami Anuluj/Zapisz");
 
-    const checkCloseButtonsInterval = setInterval(() => {
+    let buttonCheckCount = 0;
+    const maxChecks = 100; // Maksymalna liczba prób przed poddaniem się
+
+    // Sprawdzaj regularnie czy przyciski się pojawiły
+    const dialogCheckInterval = setInterval(() => {
+        buttonCheckCount++;
+
         try {
             const iframeDocument = iframe.contentDocument || iframe.contentWindow.document;
             if (!iframeDocument) return;
 
-            // Znajdź przyciski Anuluj i Zapisz
+            console.log(`Próba #${buttonCheckCount} wyszukania przycisków Anuluj/Zapisz`);
+
+            // Sprawdź różne możliwe selektory/warunki, które mogą wskazywać na pojawienie się dialogu
             const cancelButton = findSAPButton(iframeDocument, "__button32");
             const saveButton = findSAPButton(iframeDocument, "__button31");
 
-            // Flaga pomocnicza do sprawdzenia czy ustawiono nasłuchiwanie
-            let listenersAdded = false;
+            // Jeśli znaleziono którykolwiek z przycisków
+            if (cancelButton || saveButton) {
+                console.log("Wykryto przyciski dialogu!");
+                clearInterval(dialogCheckInterval);
 
-            // Dodaj nasłuchiwanie na przycisk Anuluj
-            if (cancelButton) {
-                console.log("Znaleziono przycisk Anuluj - dodaję nasłuchiwanie");
-                cancelButton.addEventListener('click', () => {
-                    console.log("Kliknięto Anuluj - zamykam modal");
-                    closeModalAndCleanup(iframe);
-                });
-                listenersAdded = true;
-            }
-
-            // Dodaj nasłuchiwanie na przycisk Zapisz (może być początkowo nieaktywny)
-            if (saveButton) {
-                console.log("Znaleziono przycisk Zapisz - dodaję nasłuchiwanie");
-
-                // Gdy przycisk Zapisz stanie się aktywny
-                const saveButtonObserver = new MutationObserver((mutations) => {
-                    if (!saveButton.disabled) {
-                        console.log("Przycisk Zapisz stał się aktywny");
-                        saveButton.addEventListener('click', () => {
-                            console.log("Kliknięto Zapisz - zamykam modal");
-                            closeModalAndCleanup(iframe);
-                        });
-                        saveButtonObserver.disconnect();
-                    }
-                });
-
-                // Obserwuj zmiany atrybutu disabled
-                saveButtonObserver.observe(saveButton, {
-                    attributes: true,
-                    attributeFilter: ['disabled']
-                });
-
-                // Dodatkowo, jeśli przycisk jest już aktywny
-                if (!saveButton.disabled) {
-                    saveButton.addEventListener('click', () => {
-                        console.log("Kliknięto Zapisz - zamykam modal");
+                // Dodaj nasłuchiwanie na oba przyciski
+                if (cancelButton) {
+                    console.log("Dodaję nasłuchiwanie na przycisk Anuluj");
+                    cancelButton.addEventListener('click', () => {
+                        console.log("Kliknięto Anuluj - zamykam modal");
                         closeModalAndCleanup(iframe);
                     });
                 }
 
-                listenersAdded = true;
-            }
+                if (saveButton) {
+                    console.log("Dodaję nasłuchiwanie na przycisk Zapisz");
+                    // Od razu dodaj nasłuchiwanie, nawet jeśli przycisk jest obecnie nieaktywny
+                    saveButton.addEventListener('click', () => {
+                        console.log("Kliknięto Zapisz - zamykam modal");
+                        closeModalAndCleanup(iframe);
+                    });
 
-            // Jeśli dodano nasłuchiwanie, zatrzymaj interwał
-            if (listenersAdded) {
-                clearInterval(checkCloseButtonsInterval);
+                    // Dodatkowo sprawdź, czy przycisk jest już aktywny
+                    checkSaveButtonActivation(saveButton, iframe);
+                }
+            } else if (buttonCheckCount >= maxChecks) {
+                console.log("Osiągnięto maksymalną liczbę prób. Zatrzymuję sprawdzanie.");
+                clearInterval(dialogCheckInterval);
             }
         } catch (e) {
-            console.error("Błąd podczas ustawiania nasłuchiwania na przyciski zamykające:", e);
+            console.error("Błąd podczas monitorowania dialogu:", e);
+            if (buttonCheckCount >= maxChecks) {
+                clearInterval(dialogCheckInterval);
+            }
         }
-    }, 300);
+    }, 200); // Sprawdzaj często
+}
 
-    // Zatrzymaj sprawdzanie po 20 sekundach (awaryjnie)
-    setTimeout(() => clearInterval(checkCloseButtonsInterval), 20000);
+// Funkcja sprawdzająca, czy przycisk Zapisz stał się aktywny
+function checkSaveButtonActivation(saveButton, iframe) {
+    if (!saveButton) return;
+
+    console.log("Monitoruję aktywację przycisku Zapisz");
+
+    // Sprawdzaj regularnie czy przycisk stał się aktywny
+    const activationCheckInterval = setInterval(() => {
+        try {
+            // Jeśli przycisk nie jest już nieaktywny (disabled)
+            if (!saveButton.disabled) {
+                console.log("Przycisk Zapisz jest teraz aktywny!");
+                clearInterval(activationCheckInterval);
+            }
+        } catch (e) {
+            console.error("Błąd podczas sprawdzania aktywacji przycisku Zapisz:", e);
+            clearInterval(activationCheckInterval);
+        }
+    }, 500);
+
+    // Zatrzymaj sprawdzanie po 30 sekundach
+    setTimeout(() => clearInterval(activationCheckInterval), 30000);
 }
 
 // Funkcja zamykająca modal i czyszcząca zasoby
