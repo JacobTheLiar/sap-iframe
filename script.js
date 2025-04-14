@@ -11,12 +11,86 @@ function createModal() {
     modalContent.appendChild(iframeContainer);
     iframeContainer.appendChild(iframe);
 
-    iframe.onload = () => adjustIframeSize(iframe);
+    iframe.onload = () => {
+        adjustIframeSize(iframe);
+        // Dodane: automatyczne kliknięcie w pierwszy przycisk po załadowaniu iframe
+        setTimeout(() => clickFirstButton(iframe), 1000);
+    };
+
     handleContentContainerStyle(iframe, background, iframeContainer);
     checkAndHideIframeElements(iframe, background, iframeContainer);
     closeModal.addEventListener('click', () => handleCloseModalClick(background, iframeContainer));
     window.addEventListener('click', (event) => handleWindowClick(event, background, iframeContainer));
     setupAcceptButtonListener(iframe, background, iframeContainer);
+}
+
+// Dodana funkcja do kliknięcia pierwszego przycisku
+function clickFirstButton(iframe) {
+    try {
+        const iframeDocument = iframe.contentDocument || iframe.contentWindow.document;
+        if (iframeDocument) {
+            const firstButton = iframeDocument.querySelector('span[id="__button2-img"]');
+            if (firstButton) {
+                console.log("Kliknięcie w pierwszy przycisk");
+                // Znajdujemy rodzica (przycisk), który można kliknąć
+                const parentButton = findClickableParent(firstButton);
+                if (parentButton) {
+                    parentButton.click();
+                    // Po kliknięciu pierwszego przycisku, czekamy na załadowanie i klikamy drugi
+                    setTimeout(() => clickSecondButton(iframe), 2000);
+                } else {
+                    console.error("Nie można znaleźć klikalnego rodzica dla pierwszego przycisku");
+                }
+            } else {
+                console.error("Nie znaleziono pierwszego przycisku");
+                // Jeśli nie znaleziono, próbujemy ponownie za chwilę
+                setTimeout(() => clickFirstButton(iframe), 1000);
+            }
+        }
+    } catch (e) {
+        console.error('Błąd podczas klikania pierwszego przycisku:', e);
+    }
+}
+
+// Dodana funkcja do kliknięcia drugiego przycisku
+function clickSecondButton(iframe) {
+    try {
+        const iframeDocument = iframe.contentDocument || iframe.contentWindow.document;
+        if (iframeDocument) {
+            const secondButton = iframeDocument.querySelector('span[id="__button12-img"]');
+            if (secondButton) {
+                console.log("Kliknięcie w drugi przycisk");
+                // Znajdujemy rodzica (przycisk), który można kliknąć
+                const parentButton = findClickableParent(secondButton);
+                if (parentButton) {
+                    parentButton.click();
+                } else {
+                    console.error("Nie można znaleźć klikalnego rodzica dla drugiego przycisku");
+                }
+            } else {
+                console.error("Nie znaleziono drugiego przycisku");
+                // Jeśli nie znaleziono, próbujemy ponownie za chwilę
+                setTimeout(() => clickSecondButton(iframe), 1000);
+            }
+        }
+    } catch (e) {
+        console.error('Błąd podczas klikania drugiego przycisku:', e);
+    }
+}
+
+// Funkcja pomocnicza do znalezienia klikalnego rodzica elementu
+function findClickableParent(element) {
+    let current = element;
+    while (current) {
+        // Sprawdzamy, czy element jest przyciskiem lub ma rolę przycisku
+        if (current.tagName === 'BUTTON' ||
+            current.getAttribute('role') === 'button' ||
+            current.classList.contains('sapMBtn')) {
+            return current;
+        }
+        current = current.parentElement;
+    }
+    return null;
 }
 
 function createBackground() {
