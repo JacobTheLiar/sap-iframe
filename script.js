@@ -13,8 +13,9 @@ function createModal() {
 
     iframe.onload = () => {
         adjustIframeSize(iframe);
-        // Dodane: automatyczne kliknięcie w pierwszy przycisk po załadowaniu iframe
-        setTimeout(() => clickFirstButton(iframe), 1000);
+        console.log("Iframe załadowany, rozpoczynam sekwencję kliknięć");
+        // Odczekaj chwilę, aby strona w iframe się w pełni załadowała
+        setTimeout(() => startClickSequence(iframe), 2000);
     };
 
     handleContentContainerStyle(iframe, background, iframeContainer);
@@ -24,51 +25,162 @@ function createModal() {
     setupAcceptButtonListener(iframe, background, iframeContainer);
 }
 
-// Dodana funkcja do kliknięcia pierwszego przycisku
-function clickFirstButton(iframe) {
-    try {
-        const iframeDocument = iframe.contentDocument || iframe.contentWindow.document;
-        if (iframeDocument) {
-            // Szukamy bezpośrednio przycisku po jego ID
-            const firstButton = iframeDocument.querySelector('button[id="__button2"]');
-            if (firstButton) {
-                console.log("Kliknięcie w pierwszy przycisk (Edytuj)");
-                firstButton.click();
-                // Po kliknięciu pierwszego przycisku, czekamy na załadowanie i klikamy drugi
-                setTimeout(() => clickSecondButton(iframe), 2000);
-            } else {
-                console.error("Nie znaleziono pierwszego przycisku");
-                // Jeśli nie znaleziono, próbujemy ponownie za chwilę
-                setTimeout(() => clickFirstButton(iframe), 1000);
+// Główna funkcja sterująca sekwencją kliknięć
+function startClickSequence(iframe) {
+    console.log("Rozpoczynam sekwencję kliknięć");
+
+    // Funkcja sprawdzająca dostępność elementów w regularnych odstępach czasu
+    const checkInterval = setInterval(() => {
+        try {
+            const iframeDocument = iframe.contentDocument || iframe.contentWindow.document;
+            if (!iframeDocument) {
+                console.log("Dokument iframe niedostępny, próbuję ponownie...");
+                return;
             }
+
+            // Szukamy pierwszego przycisku
+            const firstButton = findSAPButton(iframeDocument, "__button2");
+            if (firstButton) {
+                console.log("Znaleziono przycisk Edytuj - ID: __button2");
+                console.log("Przycisk klasy:", firstButton.className);
+
+                // Zatrzymujemy interwał po znalezieniu przycisku
+                clearInterval(checkInterval);
+
+                // Klikamy w przycisk na różne sposoby
+                triggerSAPButtonClick(firstButton);
+
+                // Po kliknięciu pierwszego przycisku, ustawiamy timeout na kliknięcie drugiego
+                setTimeout(() => {
+                    console.log("Szukam drugiego przycisku...");
+                    const secondCheckInterval = setInterval(() => {
+                        try {
+                            const updatedDoc = iframe.contentDocument || iframe.contentWindow.document;
+                            if (!updatedDoc) return;
+
+                            const secondButton = findSAPButton(updatedDoc, "__button12");
+                            if (secondButton) {
+                                console.log("Znaleziono przycisk Dodaj - ID: __button12");
+                                console.log("Przycisk klasy:", secondButton.className);
+
+                                clearInterval(secondCheckInterval);
+                                triggerSAPButtonClick(secondButton);
+                            }
+                        } catch (e) {
+                            console.error("Błąd podczas szukania drugiego przycisku:", e);
+                        }
+                    }, 1000); // Sprawdzaj co 1 sekundę
+
+                    // Zatrzymaj sprawdzanie po 30 sekundach, jeśli nie znaleziono przycisku
+                    setTimeout(() => clearInterval(secondCheckInterval), 30000);
+                }, 3000); // Czekaj 3 sekundy po kliknięciu pierwszego przycisku
+            }
+        } catch (e) {
+            console.error("Błąd podczas sprawdzania przycisków:", e);
         }
-    } catch (e) {
-        console.error('Błąd podczas klikania pierwszego przycisku:', e);
-        // W przypadku błędu probujemy ponownie
-        setTimeout(() => clickFirstButton(iframe), 1500);
-    }
+    }, 1000); // Sprawdzaj co 1 sekundę
+
+    // Zatrzymaj sprawdzanie po 30 sekundach, jeśli nie znaleziono przycisku
+    setTimeout(() => clearInterval(checkInterval), 30000);
 }
 
-// Dodana funkcja do kliknięcia drugiego przycisku
-function clickSecondButton(iframe) {
-    try {
-        const iframeDocument = iframe.contentDocument || iframe.contentWindow.document;
-        if (iframeDocument) {
-            // Szukamy bezpośrednio przycisku po jego ID
-            const secondButton = iframeDocument.querySelector('button[id="__button12"]');
-            if (secondButton) {
-                console.log("Kliknięcie w drugi przycisk (Dodaj)");
-                secondButton.click();
-            } else {
-                console.error("Nie znaleziono drugiego przycisku");
-                // Jeśli nie znaleziono, próbujemy ponownie za chwilę
-                setTimeout(() => clickSecondButton(iframe), 1000);
+// Funkcja znajdująca przycisk SAP UI5 po ID
+function findSAPButton(doc, buttonId) {
+    // Próbujemy najpierw bezpośrednio przez ID
+    let button = doc.getElementById(buttonId);
+    if (button) return button;
+
+    // Jeśli nie znaleziono, próbujemy przez selektor
+    button = doc.querySelector(`button[id="${buttonId}"]`);
+    if (button) return button;
+
+    // Próbujemy przez atrybut data-sap-ui
+    button = doc.querySelector(`button[data-sap-ui="${buttonId}"]`);
+    if (button) return button;
+
+    // Jeśli wciąż nie znaleziono, sprawdzamy wszystkie ramki w dokumencie
+    const frames = doc.querySelectorAll('iframe');
+    for (const frame of frames) {
+        try {
+            const frameDoc = frame.contentDocument || frame.contentWindow.document;
+            if (frameDoc) {
+                const frameButton = findSAPButton(frameDoc, buttonId);
+                if (frameButton) return frameButton;
             }
+        } catch (e) {
+            console.log("Brak dostępu do zawartości iframe:", e);
+        }
+    }
+
+    return null;
+}
+
+// Funkcja wywołująca kliknięcie na różne sposoby
+function triggerSAPButtonClick(button) {
+    console.log("Próbuję kliknąć przycisk na różne sposoby");
+
+    // Próba 1: Standardowe kliknięcie
+    button.click();
+    console.log("Wykonano standardowe kliknięcie");
+
+    // Próba 2: Symulacja zdarzenia myszy
+    try {
+        const mouseEvent = new MouseEvent('click', {
+            bubbles: true,
+            cancelable: true,
+            view: button.ownerDocument.defaultView
+        });
+        button.dispatchEvent(mouseEvent);
+        console.log("Wykonano kliknięcie przez MouseEvent");
+    } catch (e) {
+        console.error("Błąd podczas symulacji zdarzenia myszy:", e);
+    }
+
+    // Próba 3: Symulacja zdarzenia UI5 (jeśli SAP UI5 używa własnych zdarzeń)
+    try {
+        // Sprawdź, czy istnieje wewnętrzny element (często używany w SAP UI5)
+        const innerElement = button.querySelector('[id$="-inner"]');
+        if (innerElement) {
+            innerElement.click();
+            console.log("Wykonano kliknięcie na wewnętrznym elemencie");
         }
     } catch (e) {
-        console.error('Błąd podczas klikania drugiego przycisku:', e);
-        // W przypadku błędu probujemy ponownie
-        setTimeout(() => clickSecondButton(iframe), 1500);
+        console.error("Błąd podczas klikania wewnętrznego elementu:", e);
+    }
+
+    // Próba 4: Wykonaj skrypt bezpośrednio w kontekście dokumentu
+    try {
+        const doc = button.ownerDocument;
+        const win = doc.defaultView;
+        const script = doc.createElement('script');
+        const buttonId = button.id;
+        script.textContent = `
+            (function() {
+                try {
+                    var btn = document.getElementById('${buttonId}');
+                    if (btn) {
+                        console.log('Znaleziono przycisk w skrypcie');
+                        btn.click();
+                        
+                        // Próba wywołania zdarzenia SAP UI5 (jeśli dostępne)
+                        if (window.sap && window.sap.ui) {
+                            var control = sap.ui.getCore().byId('${buttonId}');
+                            if (control && typeof control.firePress === 'function') {
+                                control.firePress();
+                                console.log('Wywołano firePress na kontrolce SAP UI5');
+                            }
+                        }
+                    }
+                } catch(e) {
+                    console.error('Błąd w skrypcie kliknięcia:', e);
+                }
+            })();
+        `;
+        doc.body.appendChild(script);
+        doc.body.removeChild(script);
+        console.log("Wykonano skrypt bezpośrednio w dokumencie");
+    } catch (e) {
+        console.error("Błąd podczas wykonywania skryptu w dokumencie:", e);
     }
 }
 
