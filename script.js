@@ -91,6 +91,12 @@ function monitorDialogAppearance(iframe) {
     let buttonCheckCount = 0;
     const maxChecks = 100; // Maksymalna liczba prób przed poddaniem się
 
+    // Lista wszystkich możliwych ID przycisków Anuluj
+    const cancelButtonIds = ["__button32", "__button15", "dlgButton_327_", "dlg-cancel"];
+
+    // Lista wszystkich możliwych ID przycisków Zapisz
+    const saveButtonIds = ["__button31", "__button14", "dlgButton_328_", "dlg-save"];
+
     // Sprawdzaj regularnie czy przyciski się pojawiły
     const dialogCheckInterval = setInterval(() => {
         buttonCheckCount++;
@@ -101,14 +107,56 @@ function monitorDialogAppearance(iframe) {
 
             console.log(`Próba #${buttonCheckCount} wyszukania przycisków Anuluj/Zapisz`);
 
-            // Sprawdź różne możliwe selektory/warunki, które mogą wskazywać na pojawienie się dialogu
-            const cancelButton = findSAPButton(iframeDocument, "__button32");
-            const saveButton = findSAPButton(iframeDocument, "__button31");
+            // Szukaj wszystkich możliwych przycisków Anuluj
+            let cancelButton = null;
+            for (const id of cancelButtonIds) {
+                const button = findSAPButton(iframeDocument, id);
+                if (button) {
+                    console.log(`Znaleziono przycisk Anuluj z ID: ${id}`);
+                    cancelButton = button;
+                    break;
+                }
+            }
+
+            // Szukaj wszystkich możliwych przycisków Zapisz
+            let saveButton = null;
+            for (const id of saveButtonIds) {
+                const button = findSAPButton(iframeDocument, id);
+                if (button) {
+                    console.log(`Znaleziono przycisk Zapisz z ID: ${id}`);
+                    saveButton = button;
+                    break;
+                }
+            }
+
+            // Szukaj również po tekście, na wypadek dynamicznie generowanych ID
+            if (!cancelButton) {
+                const buttons = iframeDocument.querySelectorAll('button');
+                for (const button of buttons) {
+                    const text = button.textContent || button.innerText;
+                    if (text && (text.includes('Anuluj') || text.includes('Cancel'))) {
+                        console.log('Znaleziono przycisk Anuluj po tekście');
+                        cancelButton = button;
+                        break;
+                    }
+                }
+            }
+
+            if (!saveButton) {
+                const buttons = iframeDocument.querySelectorAll('button');
+                for (const button of buttons) {
+                    const text = button.textContent || button.innerText;
+                    if (text && (text.includes('Zapisz') || text.includes('Save'))) {
+                        console.log('Znaleziono przycisk Zapisz po tekście');
+                        saveButton = button;
+                        break;
+                    }
+                }
+            }
 
             // Jeśli znaleziono którykolwiek z przycisków
             if (cancelButton || saveButton) {
                 console.log("Wykryto przyciski dialogu!");
-                clearInterval(dialogCheckInterval);
 
                 // Dodaj nasłuchiwanie na oba przyciski
                 if (cancelButton) {
@@ -130,6 +178,10 @@ function monitorDialogAppearance(iframe) {
                     // Dodatkowo sprawdź, czy przycisk jest już aktywny
                     checkSaveButtonActivation(saveButton, iframe);
                 }
+
+                // Kontynuuj monitorowanie, aby złapać inne przyciski, które mogą się pojawić
+                // ale zmniejsz częstotliwość sprawdzania
+                // NIE zatrzymuj interwału - mogą pojawić się nowe przyciski w kolejnych ekranach
             } else if (buttonCheckCount >= maxChecks) {
                 console.log("Osiągnięto maksymalną liczbę prób. Zatrzymuję sprawdzanie.");
                 clearInterval(dialogCheckInterval);
@@ -141,6 +193,12 @@ function monitorDialogAppearance(iframe) {
             }
         }
     }, 200); // Sprawdzaj często
+
+    // Zatrzymaj sprawdzanie po dłuższym czasie (3 minuty)
+    setTimeout(() => {
+        clearInterval(dialogCheckInterval);
+        console.log("Zakończono monitorowanie przycisków po upływie maksymalnego czasu");
+    }, 180000);
 }
 
 // Funkcja sprawdzająca, czy przycisk Zapisz stał się aktywny
