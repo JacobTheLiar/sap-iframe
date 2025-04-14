@@ -113,16 +113,16 @@ function monitorDialogAppearance(iframe) {
             const cancelByTitle = iframeDocument.querySelector('button[title="Anuluj"]');
             const saveByTitle = iframeDocument.querySelector('button[title="Zapisz"]');
 
-            // 3. Szukaj po tekście przycisku (najbardziej niezawodna metoda)
+            // 3. Szukaj po tekście przycisku (sprawdzamy wszystkie przyciski)
             let cancelByText = null;
             let saveByText = null;
 
             const buttons = iframeDocument.querySelectorAll('button');
             for (const button of buttons) {
                 const buttonText = button.textContent?.trim();
-                if (buttonText === 'Anuluj') {
+                if (buttonText && (buttonText.includes('Anuluj'))) {
                     cancelByText = button;
-                } else if (buttonText === 'Zapisz') {
+                } else if (buttonText && (buttonText.includes('Zapisz'))) {
                     saveByText = button;
                 }
             }
@@ -142,6 +142,32 @@ function monitorDialogAppearance(iframe) {
                         className: cancelButton.className
                     };
                     console.log("Znaleziono przycisk Anuluj:", cancelAttrs);
+
+                    // Bezpośrednie podpięcie funkcji zamykającej
+                    if (!cancelButton._hasCloseListener) {
+                        // Dodajemy podwójne zabezpieczenie - pole prywatne _hasCloseListener
+                        // oraz atrybut data-listener
+                        cancelButton._hasCloseListener = true;
+                        cancelButton.setAttribute('data-listener', 'true');
+
+                        // Użyjmy prostszej konstrukcji dla funkcji
+                        const closeFunc = function() {
+                            console.log("KLIKNIĘCIE ANULUJ - zamykam modal bezpośrednio");
+                            const background = document.getElementById('myModal');
+                            const iframeContainer = document.getElementById('iframeContainer');
+
+                            if (background) background.style.display = 'none';
+                            if (iframeContainer) iframeContainer.innerHTML = '';
+                        };
+
+                        // Dodajemy najprostszy event listener
+                        cancelButton.onclick = closeFunc;
+                        console.log("Dodano onclick do przycisku Anuluj");
+
+                        // Dodatkowo, spróbujmy dodać alternatywne nasłuchiwanie
+                        cancelButton.addEventListener('click', closeFunc);
+                        console.log("Dodano addEventListener do przycisku Anuluj");
+                    }
                 }
 
                 if (saveButton) {
@@ -153,37 +179,31 @@ function monitorDialogAppearance(iframe) {
                         className: saveButton.className
                     };
                     console.log("Znaleziono przycisk Zapisz:", saveAttrs);
-                }
 
-                // Dodaj nasłuchiwanie tylko, jeśli jeszcze nie dodano (sprawdź przez atrybut data-listener)
-                if (cancelButton && !cancelButton.hasAttribute('data-listener')) {
-                    console.log("Dodaję nasłuchiwanie na przycisk Anuluj");
-                    cancelButton.setAttribute('data-listener', 'true');
-                    cancelButton.addEventListener('click', () => {
-                        console.log("Kliknięto Anuluj - zamykam modal");
-                        closeModalAndCleanup(iframe);
-                    });
-                }
+                    // Bezpośrednie podpięcie funkcji zamykającej
+                    if (!saveButton._hasCloseListener) {
+                        // Dodajemy podwójne zabezpieczenie
+                        saveButton._hasCloseListener = true;
+                        saveButton.setAttribute('data-listener', 'true');
 
-                if (saveButton && !saveButton.hasAttribute('data-listener')) {
-                    console.log("Dodaję nasłuchiwanie na przycisk Zapisz");
-                    saveButton.setAttribute('data-listener', 'true');
-                    saveButton.addEventListener('click', () => {
-                        console.log("Kliknięto Zapisz - zamykam modal");
-                        closeModalAndCleanup(iframe);
-                    });
-                }
+                        // Użyjmy prostszej konstrukcji dla funkcji
+                        const closeFunc = function() {
+                            console.log("KLIKNIĘCIE ZAPISZ - zamykam modal bezpośrednio");
+                            const background = document.getElementById('myModal');
+                            const iframeContainer = document.getElementById('iframeContainer');
 
-                // Sprawdź, czy wszystkie przyciski są już obserwowane
-                if ((cancelButton && cancelButton.hasAttribute('data-listener')) &&
-                    (saveButton && saveButton.hasAttribute('data-listener'))) {
-                    console.log("Znaleziono i dodano nasłuchiwanie na wszystkie przyciski. Zmniejszam częstotliwość sprawdzania.");
-                    clearInterval(dialogCheckInterval);
+                            if (background) background.style.display = 'none';
+                            if (iframeContainer) iframeContainer.innerHTML = '';
+                        };
 
-                    // Ustaw rzadsze sprawdzanie na potrzeby późniejszych dialogów
-                    setTimeout(() => {
-                        monitorDialogAppearance(iframe);
-                    }, 2000);
+                        // Dodajemy najprostszy event listener
+                        saveButton.onclick = closeFunc;
+                        console.log("Dodano onclick do przycisku Zapisz");
+
+                        // Dodatkowo, spróbujmy dodać alternatywne nasłuchiwanie
+                        saveButton.addEventListener('click', closeFunc);
+                        console.log("Dodano addEventListener do przycisku Zapisz");
+                    }
                 }
             } else if (buttonCheckCount >= maxChecks) {
                 console.log("Osiągnięto maksymalną liczbę prób. Zatrzymuję sprawdzanie.");
@@ -200,13 +220,37 @@ function monitorDialogAppearance(iframe) {
                         const nestedButtons = nestedDoc.querySelectorAll('button');
                         for (const button of nestedButtons) {
                             const buttonText = button.textContent?.trim();
-                            if (buttonText === 'Anuluj' && !button.hasAttribute('data-listener')) {
-                                button.setAttribute('data-listener', 'true');
-                                button.addEventListener('click', () => closeModalAndCleanup(iframe));
+                            if (buttonText && buttonText.includes('Anuluj') && !button._hasCloseListener) {
+                                button._hasCloseListener = true;
+
+                                // Bezpośrednia funkcja zamykająca
+                                const closeFunc = function() {
+                                    console.log("KLIKNIĘCIE ZAGNIEŻDŻONY ANULUJ - zamykam modal bezpośrednio");
+                                    const background = document.getElementById('myModal');
+                                    const iframeContainer = document.getElementById('iframeContainer');
+
+                                    if (background) background.style.display = 'none';
+                                    if (iframeContainer) iframeContainer.innerHTML = '';
+                                };
+
+                                button.onclick = closeFunc;
+                                button.addEventListener('click', closeFunc);
                                 console.log("Znaleziono przycisk Anuluj w zagnieżdżonym iframe");
-                            } else if (buttonText === 'Zapisz' && !button.hasAttribute('data-listener')) {
-                                button.setAttribute('data-listener', 'true');
-                                button.addEventListener('click', () => closeModalAndCleanup(iframe));
+                            } else if (buttonText && buttonText.includes('Zapisz') && !button._hasCloseListener) {
+                                button._hasCloseListener = true;
+
+                                // Bezpośrednia funkcja zamykająca
+                                const closeFunc = function() {
+                                    console.log("KLIKNIĘCIE ZAGNIEŻDŻONY ZAPISZ - zamykam modal bezpośrednio");
+                                    const background = document.getElementById('myModal');
+                                    const iframeContainer = document.getElementById('iframeContainer');
+
+                                    if (background) background.style.display = 'none';
+                                    if (iframeContainer) iframeContainer.innerHTML = '';
+                                };
+
+                                button.onclick = closeFunc;
+                                button.addEventListener('click', closeFunc);
                                 console.log("Znaleziono przycisk Zapisz w zagnieżdżonym iframe");
                             }
                         }
