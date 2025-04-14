@@ -374,7 +374,7 @@ function createModalContent() {
     modalContent.style.padding = '20px';
     modalContent.style.border = '1px solid #888';
     modalContent.style.width = '645px';
-    modalContent.style.height = '385px';
+    modalContent.style.height = '580px';
     modalContent.style.borderRadius = '2rem';
     return modalContent;
 }
