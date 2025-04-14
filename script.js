@@ -373,7 +373,8 @@ function createModalContent() {
     modalContent.style.margin = '4% auto';
     modalContent.style.padding = '20px';
     modalContent.style.border = '1px solid #888';
-    modalContent.style.width = '70%';
+    modalContent.style.width = '645px';
+    modalContent.style.height = '385px';
     modalContent.style.borderRadius = '2rem';
     return modalContent;
 }
@@ -398,7 +399,7 @@ function createIframe(src) {
     const iframe = document.createElement('iframe');
     iframe.id = 'iframe';
     iframe.src = src;
-    iframe.style.width = '685px';
+    iframe.style.width = '100%';
     iframe.style.height = '500px';
     iframe.style.border = 'none';
     iframe.style.borderRadius = '1.5rem';
