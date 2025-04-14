@@ -65,23 +65,118 @@ function startClickSequence(iframe) {
 
                                 clearInterval(secondCheckInterval);
                                 triggerSAPButtonClick(secondButton);
+
+                                // Po kliknięciu drugiego przycisku, ustaw nasłuchiwanie na przyciski Anuluj i Zapisz
+                                setupCloseButtonsListeners(iframe);
                             }
                         } catch (e) {
                             console.error("Błąd podczas szukania drugiego przycisku:", e);
                         }
-                    }, 300); // Skrócono z 1000ms na 300ms - Sprawdzaj co 0.3 sekundy
+                    }, 300); // Sprawdzaj co 0.3 sekundy
 
                     // Skrócony czas maksymalnego oczekiwania
                     setTimeout(() => clearInterval(secondCheckInterval), 10000);
-                }, 800); // Skrócono z 3000ms na 800ms - Czekaj 0.8 sekundy po kliknięciu pierwszego przycisku
+                }, 800); // Czekaj 0.8 sekundy po kliknięciu pierwszego przycisku
             }
         } catch (e) {
             console.error("Błąd podczas sprawdzania przycisków:", e);
         }
-    }, 300); // Skrócono z 1000ms na 300ms - Sprawdzaj co 0.3 sekundy
+    }, 300); // Sprawdzaj co 0.3 sekundy
 
     // Skrócony czas maksymalnego oczekiwania
     setTimeout(() => clearInterval(checkInterval), 10000);
+}
+
+// Nowa funkcja do ustawienia nasłuchiwania na przyciski zamykające
+function setupCloseButtonsListeners(iframe) {
+    console.log("Ustawiam nasłuchiwanie na przyciski Anuluj i Zapisz");
+
+    const checkCloseButtonsInterval = setInterval(() => {
+        try {
+            const iframeDocument = iframe.contentDocument || iframe.contentWindow.document;
+            if (!iframeDocument) return;
+
+            // Znajdź przyciski Anuluj i Zapisz
+            const cancelButton = findSAPButton(iframeDocument, "__button32");
+            const saveButton = findSAPButton(iframeDocument, "__button31");
+
+            // Flaga pomocnicza do sprawdzenia czy ustawiono nasłuchiwanie
+            let listenersAdded = false;
+
+            // Dodaj nasłuchiwanie na przycisk Anuluj
+            if (cancelButton) {
+                console.log("Znaleziono przycisk Anuluj - dodaję nasłuchiwanie");
+                cancelButton.addEventListener('click', () => {
+                    console.log("Kliknięto Anuluj - zamykam modal");
+                    closeModalAndCleanup(iframe);
+                });
+                listenersAdded = true;
+            }
+
+            // Dodaj nasłuchiwanie na przycisk Zapisz (może być początkowo nieaktywny)
+            if (saveButton) {
+                console.log("Znaleziono przycisk Zapisz - dodaję nasłuchiwanie");
+
+                // Gdy przycisk Zapisz stanie się aktywny
+                const saveButtonObserver = new MutationObserver((mutations) => {
+                    if (!saveButton.disabled) {
+                        console.log("Przycisk Zapisz stał się aktywny");
+                        saveButton.addEventListener('click', () => {
+                            console.log("Kliknięto Zapisz - zamykam modal");
+                            closeModalAndCleanup(iframe);
+                        });
+                        saveButtonObserver.disconnect();
+                    }
+                });
+
+                // Obserwuj zmiany atrybutu disabled
+                saveButtonObserver.observe(saveButton, {
+                    attributes: true,
+                    attributeFilter: ['disabled']
+                });
+
+                // Dodatkowo, jeśli przycisk jest już aktywny
+                if (!saveButton.disabled) {
+                    saveButton.addEventListener('click', () => {
+                        console.log("Kliknięto Zapisz - zamykam modal");
+                        closeModalAndCleanup(iframe);
+                    });
+                }
+
+                listenersAdded = true;
+            }
+
+            // Jeśli dodano nasłuchiwanie, zatrzymaj interwał
+            if (listenersAdded) {
+                clearInterval(checkCloseButtonsInterval);
+            }
+        } catch (e) {
+            console.error("Błąd podczas ustawiania nasłuchiwania na przyciski zamykające:", e);
+        }
+    }, 300);
+
+    // Zatrzymaj sprawdzanie po 20 sekundach (awaryjnie)
+    setTimeout(() => clearInterval(checkCloseButtonsInterval), 20000);
+}
+
+// Funkcja zamykająca modal i czyszcząca zasoby
+function closeModalAndCleanup(iframe) {
+    try {
+        const background = document.getElementById('myModal');
+        const iframeContainer = document.getElementById('iframeContainer');
+
+        if (background) {
+            background.style.display = 'none';
+        }
+
+        if (iframeContainer) {
+            iframeContainer.innerHTML = '';
+        }
+
+        console.log("Modal został zamknięty");
+    } catch (e) {
+        console.error("Błąd podczas zamykania modalu:", e);
+    }
 }
 
 // Funkcja znajdująca przycisk SAP UI5 po ID
@@ -303,6 +398,7 @@ function checkAndHideIframeElements(iframe, background, iframeContainer) {
 function handleCloseModalClick(background, iframeContainer) {
     background.style.display = 'none';
     iframeContainer.innerHTML = '';
+    console.log("Modal został zamknięty przez przycisk X");
 }
 
 function setupAcceptButtonListener(iframe, background, iframeContainer) {
