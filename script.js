@@ -11,11 +11,13 @@ function createModal() {
     modalContent.appendChild(iframeContainer);
     iframeContainer.appendChild(iframe);
 
+    // Nasłuchiwanie załadowania iframe
     iframe.onload = () => {
         adjustIframeSize(iframe);
-        console.log("Iframe załadowany, rozpoczynam sekwencję kliknięć");
-        // Odczekaj chwilę, aby strona w iframe się w pełni załadowała
-        setTimeout(() => startClickSequence(iframe), 2000);
+        console.log("Iframe załadowany, czekam na gotowość DOM");
+
+        // Po załadowaniu iframe, obserwuj zmiany w dokumencie
+        observeIframeForButtons(iframe);
     };
 
     handleContentContainerStyle(iframe, background, iframeContainer);
@@ -25,63 +27,111 @@ function createModal() {
     setupAcceptButtonListener(iframe, background, iframeContainer);
 }
 
-// Główna funkcja sterująca sekwencją kliknięć
-function startClickSequence(iframe) {
-    console.log("Rozpoczynam sekwencję kliknięć");
+// Obserwacja zmian w iframe do wykrywania przycisków
+function observeIframeForButtons(iframe) {
+    let isFirstButtonClicked = false;
+    let observerInstance = null;
 
-    // Funkcja sprawdzająca dostępność elementów w regularnych odstępach czasu
-    const checkInterval = setInterval(() => {
+    // Funkcja do obsługi zmian w DOM
+    function handleDOMChanges() {
         try {
-            const iframeDocument = iframe.contentDocument || iframe.contentWindow.document;
-            if (!iframeDocument) {
-                console.log("Dokument iframe niedostępny, próbuję ponownie...");
+            const iframeDoc = iframe.contentDocument || iframe.contentWindow.document;
+            if (!iframeDoc) return;
+
+            if (!isFirstButtonClicked) {
+                // Szukamy pierwszego przycisku
+                const firstButton = findSAPButton(iframeDoc, "__button2");
+                if (firstButton) {
+                    console.log("Znaleziono przycisk Edytuj - gotowy do kliknięcia");
+
+                    // Dajemy chwilę na stabilizację DOM
+                    requestAnimationFrame(() => {
+                        triggerSAPButtonClick(firstButton);
+                        isFirstButtonClicked = true;
+                        console.log("Kliknięto pierwszy przycisk, oczekuję na pojawienie się drugiego przycisku");
+
+                        // Restartujemy obserwacje do wyszukiwania drugiego przycisku
+                        if (observerInstance) {
+                            observerInstance.disconnect();
+                        }
+
+                        // Dajemy chwilę na przeładowanie zawartości po kliknięciu
+                        setTimeout(() => {
+                            setupObserver(iframe);
+                        }, 500);
+                    });
+                }
+            } else {
+                // Szukamy drugiego przycisku
+                const secondButton = findSAPButton(iframeDoc, "__button12");
+                if (secondButton) {
+                    console.log("Znaleziono przycisk Dodaj - gotowy do kliknięcia");
+
+                    // Dajemy chwilę na stabilizację DOM
+                    requestAnimationFrame(() => {
+                        triggerSAPButtonClick(secondButton);
+                        console.log("Kliknięto drugi przycisk");
+
+                        // Zatrzymujemy obserwację po kliknięciu drugiego przycisku
+                        if (observerInstance) {
+                            observerInstance.disconnect();
+                        }
+                    });
+                }
+            }
+        } catch (e) {
+            console.error("Błąd podczas obserwacji DOM:", e);
+        }
+    }
+
+    // Ustawienie obserwatora MutationObserver
+    function setupObserver(iframe) {
+        try {
+            const iframeDoc = iframe.contentDocument || iframe.contentWindow.document;
+            if (!iframeDoc) {
+                console.log("Dokument iframe niedostępny, próbuję ponownie za chwilę");
+                setTimeout(() => setupObserver(iframe), 200);
                 return;
             }
 
-            // Szukamy pierwszego przycisku
-            const firstButton = findSAPButton(iframeDocument, "__button2");
-            if (firstButton) {
-                console.log("Znaleziono przycisk Edytuj - ID: __button2");
-                console.log("Przycisk klasy:", firstButton.className);
+            // Sprawdź najpierw, czy przyciski już istnieją
+            handleDOMChanges();
 
-                // Zatrzymujemy interwał po znalezieniu przycisku
-                clearInterval(checkInterval);
+            // Utwórz nowy obserwator
+            const observer = new MutationObserver((mutations) => {
+                handleDOMChanges();
+            });
 
-                // Klikamy w przycisk na różne sposoby
-                triggerSAPButtonClick(firstButton);
+            // Konfiguracja obserwatora - obserwuj cały dokument, w tym zmiany w drzewie i atrybutach
+            const config = {
+                childList: true,
+                subtree: true,
+                attributes: true,
+                attributeFilter: ['style', 'class', 'id']
+            };
 
-                // Po kliknięciu pierwszego przycisku, ustawiamy timeout na kliknięcie drugiego
-                setTimeout(() => {
-                    console.log("Szukam drugiego przycisku...");
-                    const secondCheckInterval = setInterval(() => {
-                        try {
-                            const updatedDoc = iframe.contentDocument || iframe.contentWindow.document;
-                            if (!updatedDoc) return;
+            // Rozpocznij obserwację
+            observer.observe(iframeDoc.documentElement, config);
+            observerInstance = observer;
 
-                            const secondButton = findSAPButton(updatedDoc, "__button12");
-                            if (secondButton) {
-                                console.log("Znaleziono przycisk Dodaj - ID: __button12");
-                                console.log("Przycisk klasy:", secondButton.className);
+            console.log("Ustawiono obserwator DOM dla iframe");
 
-                                clearInterval(secondCheckInterval);
-                                triggerSAPButtonClick(secondButton);
-                            }
-                        } catch (e) {
-                            console.error("Błąd podczas szukania drugiego przycisku:", e);
-                        }
-                    }, 1000); // Sprawdzaj co 1 sekundę
+            // Dodatkowe nasłuchiwanie na zdarzenia związane z ładowaniem elementów
+            iframe.contentWindow.addEventListener('DOMContentLoaded', handleDOMChanges);
+            iframe.contentWindow.addEventListener('load', handleDOMChanges);
 
-                    // Zatrzymaj sprawdzanie po 30 sekundach, jeśli nie znaleziono przycisku
-                    setTimeout(() => clearInterval(secondCheckInterval), 30000);
-                }, 3000); // Czekaj 3 sekundy po kliknięciu pierwszego przycisku
-            }
+            // Fallback: Sprawdź jeszcze raz po ustalonym czasie (w przypadku gdy zdarzenia nie zadziałają)
+            setTimeout(handleDOMChanges, 1000);
+            setTimeout(handleDOMChanges, 3000);
         } catch (e) {
-            console.error("Błąd podczas sprawdzania przycisków:", e);
+            console.error("Błąd podczas ustawiania obserwatora:", e);
+            // W przypadku błędu, spróbuj ponownie za chwilę
+            setTimeout(() => setupObserver(iframe), 500);
         }
-    }, 1000); // Sprawdzaj co 1 sekundę
+    }
 
-    // Zatrzymaj sprawdzanie po 30 sekundach, jeśli nie znaleziono przycisku
-    setTimeout(() => clearInterval(checkInterval), 30000);
+    // Rozpocznij obserwację
+    setupObserver(iframe);
 }
 
 // Funkcja znajdująca przycisk SAP UI5 po ID
