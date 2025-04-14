@@ -86,16 +86,10 @@ function startClickSequence(iframe) {
 
 // Nowa funkcja do ciągłego monitorowania zmian DOM w poszukiwaniu przycisków dialogu
 function monitorDialogAppearance(iframe) {
-    console.log("Rozpoczynam monitorowanie pojawienia się dialogu z przyciskami Anuluj/Zapisz");
+    console.log("Rozpoczynam monitorowanie pojawienia się przycisków Anuluj/Zapisz - nowa metoda");
 
     let buttonCheckCount = 0;
-    const maxChecks = 100; // Maksymalna liczba prób przed poddaniem się
-
-    // Lista wszystkich możliwych ID przycisków Anuluj
-    const cancelButtonIds = ["__button32", "__button15", "dlgButton_327_", "dlg-cancel"];
-
-    // Lista wszystkich możliwych ID przycisków Zapisz
-    const saveButtonIds = ["__button31", "__button14", "dlgButton_328_", "dlg-save"];
+    const maxChecks = 300; // Zwiększona liczba prób
 
     // Sprawdzaj regularnie czy przyciski się pojawiły
     const dialogCheckInterval = setInterval(() => {
@@ -105,86 +99,121 @@ function monitorDialogAppearance(iframe) {
             const iframeDocument = iframe.contentDocument || iframe.contentWindow.document;
             if (!iframeDocument) return;
 
-            console.log(`Próba #${buttonCheckCount} wyszukania przycisków Anuluj/Zapisz`);
+            if (buttonCheckCount % 10 === 0) {
+                console.log(`Próba #${buttonCheckCount} wyszukania przycisków Anuluj/Zapisz`);
+            }
 
-            // Szukaj wszystkich możliwych przycisków Anuluj
-            let cancelButton = null;
-            for (const id of cancelButtonIds) {
-                const button = findSAPButton(iframeDocument, id);
-                if (button) {
-                    console.log(`Znaleziono przycisk Anuluj z ID: ${id}`);
-                    cancelButton = button;
-                    break;
+            // Szukaj przycisków po różnych atrybutach, które mogą być bardziej stabilne
+
+            // 1. Szukaj po atrybutach data-help-id
+            const cancelByHelpId = iframeDocument.querySelector('button[data-help-id="editPageCancelAddButton"]');
+            const saveByHelpId = iframeDocument.querySelector('button[data-help-id="editPageSaveButton"]');
+
+            // 2. Szukaj po title
+            const cancelByTitle = iframeDocument.querySelector('button[title="Anuluj"]');
+            const saveByTitle = iframeDocument.querySelector('button[title="Zapisz"]');
+
+            // 3. Szukaj po tekście przycisku (najbardziej niezawodna metoda)
+            let cancelByText = null;
+            let saveByText = null;
+
+            const buttons = iframeDocument.querySelectorAll('button');
+            for (const button of buttons) {
+                const buttonText = button.textContent?.trim();
+                if (buttonText === 'Anuluj') {
+                    cancelByText = button;
+                } else if (buttonText === 'Zapisz') {
+                    saveByText = button;
                 }
             }
 
-            // Szukaj wszystkich możliwych przycisków Zapisz
-            let saveButton = null;
-            for (const id of saveButtonIds) {
-                const button = findSAPButton(iframeDocument, id);
-                if (button) {
-                    console.log(`Znaleziono przycisk Zapisz z ID: ${id}`);
-                    saveButton = button;
-                    break;
-                }
-            }
+            // Wybierz znalezione przyciski (w kolejności preferencji)
+            const cancelButton = cancelByHelpId || cancelByTitle || cancelByText;
+            const saveButton = saveByHelpId || saveByTitle || saveByText;
 
-            // Szukaj również po tekście, na wypadek dynamicznie generowanych ID
-            if (!cancelButton) {
-                const buttons = iframeDocument.querySelectorAll('button');
-                for (const button of buttons) {
-                    const text = button.textContent || button.innerText;
-                    if (text && (text.includes('Anuluj') || text.includes('Cancel'))) {
-                        console.log('Znaleziono przycisk Anuluj po tekście');
-                        cancelButton = button;
-                        break;
-                    }
-                }
-            }
-
-            if (!saveButton) {
-                const buttons = iframeDocument.querySelectorAll('button');
-                for (const button of buttons) {
-                    const text = button.textContent || button.innerText;
-                    if (text && (text.includes('Zapisz') || text.includes('Save'))) {
-                        console.log('Znaleziono przycisk Zapisz po tekście');
-                        saveButton = button;
-                        break;
-                    }
-                }
-            }
-
-            // Jeśli znaleziono którykolwiek z przycisków
+            // Dodaj bardziej szczegółowe debugowanie
             if (cancelButton || saveButton) {
-                console.log("Wykryto przyciski dialogu!");
-
-                // Dodaj nasłuchiwanie na oba przyciski
                 if (cancelButton) {
+                    const cancelAttrs = {
+                        id: cancelButton.id,
+                        helpId: cancelButton.getAttribute('data-help-id'),
+                        title: cancelButton.getAttribute('title'),
+                        text: cancelButton.textContent?.trim(),
+                        className: cancelButton.className
+                    };
+                    console.log("Znaleziono przycisk Anuluj:", cancelAttrs);
+                }
+
+                if (saveButton) {
+                    const saveAttrs = {
+                        id: saveButton.id,
+                        helpId: saveButton.getAttribute('data-help-id'),
+                        title: saveButton.getAttribute('title'),
+                        text: saveButton.textContent?.trim(),
+                        className: saveButton.className
+                    };
+                    console.log("Znaleziono przycisk Zapisz:", saveAttrs);
+                }
+
+                // Dodaj nasłuchiwanie tylko, jeśli jeszcze nie dodano (sprawdź przez atrybut data-listener)
+                if (cancelButton && !cancelButton.hasAttribute('data-listener')) {
                     console.log("Dodaję nasłuchiwanie na przycisk Anuluj");
+                    cancelButton.setAttribute('data-listener', 'true');
                     cancelButton.addEventListener('click', () => {
                         console.log("Kliknięto Anuluj - zamykam modal");
                         closeModalAndCleanup(iframe);
                     });
                 }
 
-                if (saveButton) {
+                if (saveButton && !saveButton.hasAttribute('data-listener')) {
                     console.log("Dodaję nasłuchiwanie na przycisk Zapisz");
-                    // Od razu dodaj nasłuchiwanie, nawet jeśli przycisk jest obecnie nieaktywny
+                    saveButton.setAttribute('data-listener', 'true');
                     saveButton.addEventListener('click', () => {
                         console.log("Kliknięto Zapisz - zamykam modal");
                         closeModalAndCleanup(iframe);
                     });
-
-                    // Dodatkowo sprawdź, czy przycisk jest już aktywny
-                    checkSaveButtonActivation(saveButton, iframe);
                 }
 
-                // Kontynuuj monitorowanie, aby złapać inne przyciski, które mogą się pojawić
-                // ale zmniejsz częstotliwość sprawdzania
-                // NIE zatrzymuj interwału - mogą pojawić się nowe przyciski w kolejnych ekranach
+                // Sprawdź, czy wszystkie przyciski są już obserwowane
+                if ((cancelButton && cancelButton.hasAttribute('data-listener')) &&
+                    (saveButton && saveButton.hasAttribute('data-listener'))) {
+                    console.log("Znaleziono i dodano nasłuchiwanie na wszystkie przyciski. Zmniejszam częstotliwość sprawdzania.");
+                    clearInterval(dialogCheckInterval);
+
+                    // Ustaw rzadsze sprawdzanie na potrzeby późniejszych dialogów
+                    setTimeout(() => {
+                        monitorDialogAppearance(iframe);
+                    }, 2000);
+                }
             } else if (buttonCheckCount >= maxChecks) {
                 console.log("Osiągnięto maksymalną liczbę prób. Zatrzymuję sprawdzanie.");
                 clearInterval(dialogCheckInterval);
+            }
+
+            // Szukaj również przycisków w zagnieżdżonych iframe
+            const nestedIframes = iframeDocument.querySelectorAll('iframe');
+            for (const nestedIframe of nestedIframes) {
+                try {
+                    const nestedDoc = nestedIframe.contentDocument || nestedIframe.contentWindow.document;
+                    if (nestedDoc) {
+                        // Rekurencyjne sprawdzenie zagnieżdżonych iframe
+                        const nestedButtons = nestedDoc.querySelectorAll('button');
+                        for (const button of nestedButtons) {
+                            const buttonText = button.textContent?.trim();
+                            if (buttonText === 'Anuluj' && !button.hasAttribute('data-listener')) {
+                                button.setAttribute('data-listener', 'true');
+                                button.addEventListener('click', () => closeModalAndCleanup(iframe));
+                                console.log("Znaleziono przycisk Anuluj w zagnieżdżonym iframe");
+                            } else if (buttonText === 'Zapisz' && !button.hasAttribute('data-listener')) {
+                                button.setAttribute('data-listener', 'true');
+                                button.addEventListener('click', () => closeModalAndCleanup(iframe));
+                                console.log("Znaleziono przycisk Zapisz w zagnieżdżonym iframe");
+                            }
+                        }
+                    }
+                } catch (e) {
+                    // Ignoruj błędy dostępu do iframe z innego źródła
+                }
             }
         } catch (e) {
             console.error("Błąd podczas monitorowania dialogu:", e);
@@ -192,13 +221,13 @@ function monitorDialogAppearance(iframe) {
                 clearInterval(dialogCheckInterval);
             }
         }
-    }, 200); // Sprawdzaj często
+    }, 100); // Częstsze sprawdzanie
 
-    // Zatrzymaj sprawdzanie po dłuższym czasie (3 minuty)
+    // Zatrzymaj sprawdzanie po dłuższym czasie
     setTimeout(() => {
         clearInterval(dialogCheckInterval);
         console.log("Zakończono monitorowanie przycisków po upływie maksymalnego czasu");
-    }, 180000);
+    }, 300000); // 5 minut
 }
 
 // Funkcja sprawdzająca, czy przycisk Zapisz stał się aktywny
@@ -231,6 +260,8 @@ function closeModalAndCleanup(iframe) {
         const background = document.getElementById('myModal');
         const iframeContainer = document.getElementById('iframeContainer');
 
+        console.log("Zamykam modal - closeModalAndCleanup wywołane");
+
         if (background) {
             background.style.display = 'none';
         }
@@ -238,6 +269,24 @@ function closeModalAndCleanup(iframe) {
         if (iframeContainer) {
             iframeContainer.innerHTML = '';
         }
+
+        // Dodatkowe czyszczenie na poziomie globalnym
+        const clearTimeouts = () => {
+            // Czyścimy wszystkie timeouty i interwały
+            const highestTimeoutId = setTimeout(() => {}, 0);
+            for (let i = 0; i < highestTimeoutId; i++) {
+                clearTimeout(i);
+            }
+
+            // Czyścimy wszystkie interwały do pewnego limitu
+            const highestIntervalId = setInterval(() => {}, 100000);
+            for (let i = 0; i < highestIntervalId; i++) {
+                clearInterval(i);
+            }
+        };
+
+        // Wywołaj czyszczenie z opóźnieniem, aby inne handlery miały szansę się wykonać
+        setTimeout(clearTimeouts, 500);
 
         console.log("Modal został zamknięty");
     } catch (e) {
