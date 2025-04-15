@@ -374,7 +374,6 @@ function createModalContent() {
     modalContent.style.padding = '20px';
     modalContent.style.border = '1px solid #888';
     modalContent.style.width = '645px';
-    modalContent.style.height = '510px';
     modalContent.style.borderRadius = '2rem';
     return modalContent;
 }
@@ -401,7 +400,7 @@ function createIframe(src) {
     iframe.id = 'iframe';
     iframe.src = src;
     iframe.style.width = '100%';
-    iframe.style.height = '450px';
+    iframe.style.height = '460px';
     iframe.style.border = 'none';
     iframe.style.borderRadius = '1.5rem';
     return iframe;
