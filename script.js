@@ -1,4 +1,109 @@
-// IIFE (Immediately Invoked Function Expression) dla ochrony zmiennych globalnych
+// Nowa funkcja dodająca overlay wokół dialogu
+function addOverlayAroundDialog(doc, dialogElement) {
+    try {
+        // Sprawdzamy, czy overlay już istnieje
+        const existingOverlay = doc.getElementById('sapDialogOverlay');
+        if (existingOverlay) {
+            // Jeśli istnieje, aktualizujemy jego pozycję
+            positionOverlayAroundDialog(existingOverlay, dialogElement);
+            return;
+        }
+
+        // Tworzymy nowy overlay
+        const overlay = doc.createElement('div');
+        overlay.id = 'sapDialogOverlay';
+        overlay.style.cssText = `
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.7);
+            z-index: 9998;
+            pointer-events: none;
+        `;
+
+        // Dodajemy do dokumentu
+        doc.body.appendChild(overlay);
+
+        // Pozycjonujemy overlay wokół dialogu
+        positionOverlayAroundDialog(overlay, dialogElement);
+
+        log("Dodano overlay wokół dialogu");
+    } catch (e) {
+        log("Błąd podczas dodawania overlay: " + e, true);
+    }
+}
+
+// Funkcja do pozycjonowania overlay wokół dialogu
+function positionOverlayAroundDialog(overlay, dialogElement) {
+    try {
+        // Pobieramy pozycję i wymiary dialogu
+        const rect = dialogElement.getBoundingClientRect();
+
+        // Dodajemy margines wokół dialogu (piksele)
+        const margin = 10;
+
+        // Tworzymy "dziurę" w overlay poprzez clip-path
+        overlay.style.clipPath = `
+            polygon(
+                0% 0%, 
+                100% 0%, 
+                100% 100%, 
+                0% 100%,
+                0% ${rect.top - margin}px, 
+                ${rect.left - margin}px ${rect.top - margin}px, 
+                ${rect.left - margin}px ${rect.bottom + margin}px, 
+                ${rect.right + margin}px ${rect.bottom + margin}px, 
+                ${rect.right + margin}px ${rect.top - margin}px, 
+                0% ${rect.top - margin}px
+            )
+        `;
+
+        // Dodajemy dodatkowy efekt dla lepszej widoczności dialogu
+        dialogElement.style.boxShadow = '0 0 15px 5px rgba(255, 255, 255, 0.6)';
+        dialogElement.style.zIndex = '9999';
+    } catch (e) {
+        log("Błąd podczas pozycjonowania overlay: " + e, true);
+    }
+}
+
+// Funkcja czyszcząca overlay
+function cleanupOverlay(iframe) {
+    try {
+        if (!iframe) return;
+
+        const cleanupFromDoc = (doc) => {
+            if (!doc) return;
+
+            // Usuwamy overlay
+            const overlay = doc.getElementById('sapDialogOverlay');
+            if (overlay && overlay.parentNode) {
+                overlay.parentNode.removeChild(overlay);
+            }
+
+            // Sprawdzamy wszystkie iframe
+            const frames = doc.querySelectorAll('iframe');
+            for (const frame of frames) {
+                try {
+                    const frameDoc = getIframeDocument(frame);
+                    if (frameDoc) {
+                        cleanupFromDoc(frameDoc);
+                    }
+                } catch (e) {
+                    // Ignorujemy błędy dostępu do iframe
+                }
+            }
+        };
+
+        const doc = getIframeDocument(iframe);
+        cleanupFromDoc(doc);
+
+        log("Usunięto overlay");
+    } catch (e) {
+        log("Błąd podczas usuwania overlay: " + e, true);
+    }
+}// IIFE (Immediately Invoked Function Expression) dla ochrony zmiennych globalnych
 (function() {
 // Global variables - teraz są zamknięte w zakresie IIFE
     const LOG_ENABLED = true;
@@ -244,7 +349,12 @@
             if (!doc) return false;
 
             // Sprawdzamy dialog w głównym dokumencie
-            if (isDialogVisible(doc)) return true;
+            const dialogElement = findDialogElement(doc);
+            if (dialogElement) {
+                // Dodajemy overlay jeśli znaleziono dialog
+                addOverlayAroundDialog(doc, dialogElement);
+                return true;
+            }
 
             // Sprawdzamy wszystkie zagnieżdżone iframe
             const frames = doc.querySelectorAll('iframe');
@@ -264,8 +374,8 @@
         return false;
     }
 
-// Optymalizacja sprawdzania widoczności dialogu
-    function isDialogVisible(doc) {
+// Nowa funkcja do znajdowania elementu dialogu
+    function findDialogElement(doc) {
         try {
             // Sprawdzamy dialogi po klasach SAP UI5
             const dialogSelectors = [
@@ -283,7 +393,7 @@
                 if (isElementVisible(dialog) &&
                     dialog.textContent &&
                     dialog.textContent.indexOf(DIALOG_TITLE_TO_MONITOR) !== -1) {
-                    return true;
+                    return dialog;
                 }
             }
 
@@ -307,18 +417,23 @@
                         if (parent.classList &&
                             parent.classList.contains('sapMDialog') &&
                             isElementVisible(parent)) {
-                            return true;
+                            return parent;
                         }
                         parent = parent.parentElement;
                     }
                 }
             }
 
-            return false;
+            return null;
         } catch (e) {
-            log("Błąd podczas sprawdzania widoczności dialogu: " + e, true);
-            return false;
+            log("Błąd podczas szukania elementu dialogu: " + e, true);
+            return null;
         }
+    }
+
+// Optymalizacja sprawdzania widoczności dialogu
+    function isDialogVisible(doc) {
+        return findDialogElement(doc) !== null;
     }
 
 // Sprawdzenie czy element jest widoczny
@@ -438,6 +553,11 @@
 
 // Zamknięcie modalu i wyczyszczenie zasobów
     function closeModalAndCleanup(background, iframeContainer) {
+        const iframe = document.getElementById('iframe');
+        if (iframe) {
+            cleanupOverlay(iframe);
+        }
+
         background.style.display = 'none';
         iframeContainer.innerHTML = '';
 
@@ -454,6 +574,11 @@
     function cleanupAndCloseModal() {
         const background = document.getElementById('myModal');
         const iframeContainer = document.getElementById('iframeContainer');
+        const iframe = document.getElementById('iframe');
+
+        if (iframe) {
+            cleanupOverlay(iframe);
+        }
 
         if (background) {
             background.style.display = 'none';
