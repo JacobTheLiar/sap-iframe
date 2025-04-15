@@ -304,9 +304,7 @@
                     // Sprawdzamy, czy nagłówek jest częścią widocznego dialogu
                     let parent = header.parentElement;
                     while (parent) {
-                        if (parent.classList &&
-                            parent.classList.contains('sapMDialog') &&
-                            isElementVisible(parent)) {
+                        if (parent.classList?.contains('sapMDialog') && isElementVisible(parent)) {
                             return true;
                         }
                         parent = parent.parentElement;
@@ -430,7 +428,7 @@
 // Bezpieczne pobieranie dokumentu z iframe
     function getIframeDocument(iframe) {
         try {
-            return iframe.contentDocument || (iframe.contentWindow && iframe.contentWindow.document);
+            return iframe.contentDocument || (iframe.contentWindow?.contentWindow.document);
         } catch (e) {
             return null;
         }
