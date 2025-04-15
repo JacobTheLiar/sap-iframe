@@ -42,7 +42,7 @@ function positionOverlayAroundDialog(overlay, dialogElement) {
         const rect = dialogElement.getBoundingClientRect();
 
         // Dodajemy margines wokół dialogu (piksele)
-        const margin = 10;
+        const margin = 5;
 
         // Tworzymy "dziurę" w overlay poprzez clip-path
         overlay.style.clipPath = `
@@ -60,8 +60,7 @@ function positionOverlayAroundDialog(overlay, dialogElement) {
             )
         `;
 
-        // Dodajemy dodatkowy efekt dla lepszej widoczności dialogu
-        dialogElement.style.boxShadow = '0 0 15px 5px rgba(255, 255, 255, 0.6)';
+        // Usuwamy dodatkowe efekty
         dialogElement.style.zIndex = '9999';
     } catch (e) {
         log("Błąd podczas pozycjonowania overlay: " + e, true);
@@ -76,10 +75,16 @@ function cleanupOverlay(iframe) {
         const cleanupFromDoc = (doc) => {
             if (!doc) return;
 
-            // Usuwamy overlay
+            // Usuwamy overlay dialogu
             const overlay = doc.getElementById('sapDialogOverlay');
             if (overlay && overlay.parentNode) {
                 overlay.parentNode.removeChild(overlay);
+            }
+
+            // Usuwamy pełny overlay
+            const fullOverlay = doc.getElementById('sapFullOverlay');
+            if (fullOverlay && fullOverlay.parentNode) {
+                fullOverlay.parentNode.removeChild(fullOverlay);
             }
 
             // Sprawdzamy wszystkie iframe
@@ -99,7 +104,7 @@ function cleanupOverlay(iframe) {
         const doc = getIframeDocument(iframe);
         cleanupFromDoc(doc);
 
-        log("Usunięto overlay");
+        log("Usunięto wszystkie overlay");
     } catch (e) {
         log("Błąd podczas usuwania overlay: " + e, true);
     }
@@ -299,6 +304,9 @@ function cleanupOverlay(iframe) {
     function startDialogMonitoring(iframe) {
         log(`Rozpoczynam monitorowanie dialogu: ${DIALOG_TITLE_TO_MONITOR}`);
 
+        // Dodajemy pełny overlay na początku monitorowania
+        addFullOverlay(iframe);
+
         let dialogFound = false;
         let checkCount = 0;
 
@@ -338,6 +346,51 @@ function cleanupOverlay(iframe) {
                 }
             }
         }, DIALOG_CHECK_INTERVAL_MS);
+    }
+
+// Nowa funkcja dodająca pełny overlay przed pojawieniem się dialogu
+    function addFullOverlay(iframe) {
+        try {
+            const doc = getIframeDocument(iframe);
+            if (!doc) return;
+
+            // Sprawdzamy, czy już istnieje
+            if (doc.getElementById('sapFullOverlay')) return;
+
+            // Tworzymy overlay na całą stronę
+            const overlay = doc.createElement('div');
+            overlay.id = 'sapFullOverlay';
+            overlay.style.cssText = `
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: #aaaaaa;
+            z-index: 9000;
+            pointer-events: none;
+        `;
+
+            // Dodajemy do dokumentu
+            doc.body.appendChild(overlay);
+
+            log("Dodano pełny overlay przed pojawieniem się dialogu");
+
+            // Dodajemy również do zagnieżdżonych iframe
+            const frames = doc.querySelectorAll('iframe');
+            for (const frame of frames) {
+                try {
+                    const frameDoc = getIframeDocument(frame);
+                    if (frameDoc) {
+                        addFullOverlay(frame);
+                    }
+                } catch (e) {
+                    // Ignorujemy błędy dostępu do iframe
+                }
+            }
+        } catch (e) {
+            log("Błąd podczas dodawania pełnego overlay: " + e, true);
+        }
     }
 
 // Funkcja sprawdzająca dokument i jego zagnieżdżone iframe
