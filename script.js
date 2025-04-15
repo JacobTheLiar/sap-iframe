@@ -116,8 +116,8 @@ function startDialogVisibilityMonitoring(iframe) {
                 logInfo(`Próba #${visibilityCheckCount} sprawdzania widoczności dialogu z tytułem: ${DIALOG_TITLE_TO_MONITOR}`);
             }
 
-            // Sprawdzamy czy dialog z określonym tytułem jest widoczny
-            const isDialogVisible = checkDialogVisibility(iframeDocument);
+            // Używamy nowej, bardziej ogólnej metody do sprawdzania widoczności dialogu
+            const isDialogVisible = isDialogPresent(iframeDocument);
 
             // Jeśli dialog został znaleziony po raz pierwszy, zapisujemy tę informację
             if (isDialogVisible && !dialogFound) {
@@ -140,13 +140,47 @@ function startDialogVisibilityMonitoring(iframe) {
                 return;
             }
 
-            // Sprawdzamy również zagnieżdżone iframe
+            // Sprawdzamy zagnieżdżone iframe
             if (!isDialogVisible) {
-                const nestedDialogVisible = checkNestedIframesForDialog(iframeDocument);
-                if (nestedDialogVisible && !dialogFound) {
+                let nestedDialogFound = false;
+
+                // Pobieramy wszystkie iframe z dokumentu
+                const frames = iframeDocument.querySelectorAll('iframe');
+                for (const frame of frames) {
+                    try {
+                        const frameDoc = frame.contentDocument || frame.contentWindow.document;
+                        if (frameDoc) {
+                            // Używamy nowej metody również do zagnieżdżonych iframe
+                            if (isDialogPresent(frameDoc)) {
+                                nestedDialogFound = true;
+                                break;
+                            }
+
+                            // Sprawdzamy jeszcze głębiej zagnieżdżone iframe (do 2 poziomów)
+                            const nestedFrames = frameDoc.querySelectorAll('iframe');
+                            for (const nestedFrame of nestedFrames) {
+                                try {
+                                    const nestedDoc = nestedFrame.contentDocument || nestedFrame.contentWindow.document;
+                                    if (nestedDoc && isDialogPresent(nestedDoc)) {
+                                        nestedDialogFound = true;
+                                        break;
+                                    }
+                                } catch (e) {
+                                    // Ignoruj błędy dostępu do iframe z innego źródła
+                                }
+                            }
+
+                            if (nestedDialogFound) break;
+                        }
+                    } catch (e) {
+                        // Ignoruj błędy dostępu do iframe z innego źródła
+                    }
+                }
+
+                if (nestedDialogFound && !dialogFound) {
                     dialogFound = true;
                     logInfo(`Dialog z tytułem ${DIALOG_TITLE_TO_MONITOR} został znaleziony w zagnieżdżonym iframe.`);
-                } else if (dialogFound && !nestedDialogVisible) {
+                } else if (dialogFound && !nestedDialogFound) {
                     logInfo(`Dialog z tytułem ${DIALOG_TITLE_TO_MONITOR} był widoczny w zagnieżdżonym iframe, ale zniknął. Zamykam iframe.`);
                     clearInterval(dialogVisibilityInterval);
 
@@ -187,24 +221,46 @@ function startDialogVisibilityMonitoring(iframe) {
 // Funkcja sprawdzająca widoczność dialogu z określonym tytułem
 function checkDialogVisibility(document) {
     try {
-        // Szukamy tytułu dialogu na różne sposoby
+        // Sprawdzamy wszystkie dialogi SAP UI5 po klasach
+        const dialogs = document.querySelectorAll('.sapMDialog, .sapMPopup-CTX, .sapMDialogOpen');
 
-        // 1. Sprawdzamy elementy h1 i h2, które mogą zawierać tytuł
-        const titleElements = document.querySelectorAll('h1, h2, .sapMTitle');
-        for (const titleElement of titleElements) {
-            if (titleElement.textContent && titleElement.textContent.includes(DIALOG_TITLE_TO_MONITOR)) {
-                // Sprawdzamy, czy element tytułu jest widoczny (część widocznego dialogu)
-                if (isElementVisible(titleElement)) {
-                    return true;
+        for (const dialog of dialogs) {
+            // Unikamy badania ID, sprawdzamy czy dialog jest widoczny po stylach
+            if (getComputedStyle(dialog).visibility !== 'hidden' && getComputedStyle(dialog).display !== 'none') {
+                // Sprawdzamy czy dialog zawiera tytuł, którego szukamy
+                const titleTexts = dialog.querySelectorAll('.sapMTitle, .sapMDialogTitle, .sapMIBarText, h1, h2, .sapUiInvisibleText');
+
+                for (const titleText of titleTexts) {
+                    if (titleText.textContent && titleText.textContent.includes(DIALOG_TITLE_TO_MONITOR)) {
+                        return true;
+                    }
+                }
+
+                // Sprawdzamy wszystkie elementy span w dialogu
+                const spans = dialog.querySelectorAll('span');
+                for (const span of spans) {
+                    if (span.textContent && span.textContent.includes(DIALOG_TITLE_TO_MONITOR)) {
+                        return true;
+                    }
                 }
             }
         }
 
-        // 2. Sprawdzamy elementy zawierające tekst dialogu
-        const spanElements = document.querySelectorAll('span[id$="-inner"]');
-        for (const spanElement of spanElements) {
-            if (spanElement.textContent && spanElement.textContent.includes(DIALOG_TITLE_TO_MONITOR)) {
-                if (isElementVisible(spanElement)) {
+        // Sprawdzamy też po zawartości bez względu na strukturę (jako ostatnia deska ratunku)
+        const allElements = document.querySelectorAll('*');
+        for (const element of allElements) {
+            // Sprawdzamy tylko elementy, które mogą zawierać tekst i są widoczne
+            if (element.textContent &&
+                element.textContent.includes(DIALOG_TITLE_TO_MONITOR) &&
+                getComputedStyle(element).visibility !== 'hidden' &&
+                getComputedStyle(element).display !== 'none') {
+
+                // Sprawdzamy, czy element jest częścią dialogu
+                const isInDialog = element.closest('.sapMDialog') ||
+                    element.closest('.sapMPopup-CTX') ||
+                    element.closest('.sapMDialogOpen');
+
+                if (isInDialog) {
                     return true;
                 }
             }
@@ -217,48 +273,90 @@ function checkDialogVisibility(document) {
     }
 }
 
-// Funkcja sprawdzająca widoczność dialogu w zagnieżdżonych iframe
-function checkNestedIframesForDialog(document) {
-    const nestedIframes = document.querySelectorAll('iframe');
-    for (const nestedIframe of nestedIframes) {
-        try {
-            const nestedDoc = nestedIframe.contentDocument || nestedIframe.contentWindow.document;
-            if (nestedDoc) {
-                const isVisible = checkDialogVisibility(nestedDoc);
-                if (isVisible) {
+// Funkcja znajdująca dialog po treści, bez polegania na ID
+function findDialogByContent(document) {
+    try {
+        // Szukamy najpierw po atrybutach danych zamiast po ID
+        const allElements = document.querySelectorAll('[data-help-id], [aria-label], [title]');
+
+        for (const element of allElements) {
+            // Sprawdzamy różne atrybuty które mogą zawierać informacje o dialogu
+            const helpId = element.getAttribute('data-help-id');
+            const ariaLabel = element.getAttribute('aria-label');
+            const title = element.getAttribute('title');
+
+            // Sprawdzamy czy którykolwiek z atrybutów zawiera szukany tekst
+            if ((helpId && helpId.includes('kpr1')) ||
+                (ariaLabel && ariaLabel.includes('kpr1')) ||
+                (title && title.includes('kpr1'))) {
+
+                // Sprawdzamy czy element jest widoczny
+                if (getComputedStyle(element).display !== 'none' &&
+                    getComputedStyle(element).visibility !== 'hidden') {
                     return true;
                 }
             }
-        } catch (e) {
-            // Ignoruj błędy dostępu do iframe z innego źródła
+
+            // Sprawdzamy również bezpośrednią zawartość tekstową
+            if (element.textContent && element.textContent.includes(DIALOG_TITLE_TO_MONITOR)) {
+                // Sprawdzamy, czy element jest częścią dialogu SAP po klasach
+                if (element.closest('.sapMDialog') ||
+                    element.closest('.sapMPopup-CTX') ||
+                    element.closest('.sapMDialogOpen')) {
+                    return true;
+                }
+            }
         }
+
+        return false;
+    } catch (e) {
+        logError("Błąd podczas szukania dialogu po treści: " + e);
+        return false;
     }
-    return false;
 }
 
-// Funkcja sprawdzająca, czy element jest widoczny
-function isElementVisible(element) {
-    if (!element) return false;
+// Funkcja sprawdzająca, czy dialog jest widoczny - bardziej ogólna implementacja
+function isDialogPresent(document) {
+    try {
+        // Sprawdzamy obecność dialogu po klasach SAP UI5, bez polegania na ID
+        const sapDialogs = document.querySelectorAll('.sapMDialog.sapMDialogOpen, .sapMPopup-CTX:not(.sapMDialogClosed)');
 
-    // Sprawdzamy style elementu i jego rodziców
-    let currentElement = element;
-    while (currentElement) {
-        const compStyles = window.getComputedStyle(currentElement);
-        if (compStyles.display === 'none' || compStyles.visibility === 'hidden' || compStyles.opacity === '0') {
-            return false;
+        for (const dialog of sapDialogs) {
+            // Sprawdzamy styl widoczności
+            const dialogStyle = getComputedStyle(dialog);
+            if (dialogStyle.display !== 'none' && dialogStyle.visibility !== 'hidden') {
+                // Sprawdzamy, czy dialog zawiera tekst, którego szukamy
+                if (dialog.textContent && dialog.textContent.includes(DIALOG_TITLE_TO_MONITOR)) {
+                    return true;
+                }
+            }
         }
 
-        // Sprawdzamy, czy element jest częścią dialogu, który jest już zamknięty
-        if (currentElement.classList &&
-            (currentElement.classList.contains('sapMDialogClosed') ||
-                !currentElement.classList.contains('sapMDialogOpen'))) {
-            return false;
+        // Alternatywne podejście - szukamy elementów nagłówka dialogu
+        const dialogHeaders = document.querySelectorAll('.sapMDialogTitle, .sapMIBar.sapMHeader-CTX, .sapMBarMiddle');
+        for (const header of dialogHeaders) {
+            if (header.textContent && header.textContent.includes(DIALOG_TITLE_TO_MONITOR)) {
+                // Sprawdzamy, czy nagłówek jest częścią widocznego dialogu (przez rodzica)
+                let parent = header.parentElement;
+                while (parent) {
+                    if (parent.classList &&
+                        parent.classList.contains('sapMDialog') &&
+                        !parent.classList.contains('sapMDialogClosed')) {
+                        const parentStyle = getComputedStyle(parent);
+                        if (parentStyle.display !== 'none' && parentStyle.visibility !== 'hidden') {
+                            return true;
+                        }
+                    }
+                    parent = parent.parentElement;
+                }
+            }
         }
 
-        currentElement = currentElement.parentElement;
+        return false;
+    } catch (e) {
+        logError("Błąd podczas sprawdzania obecności dialogu: " + e);
+        return false;
     }
-
-    return true;
 }
 
 // Funkcja znajdująca przycisk SAP UI5 po ID
