@@ -401,7 +401,7 @@ function createIframe(src) {
     const iframe = document.createElement('iframe');
     iframe.id = 'iframe';
     iframe.src = src;
-    iframe.style.width = '540px';
+    iframe.style.width = '100%';
     iframe.style.height = '390px';
     iframe.style.border = 'none';
     iframe.style.borderRadius = '1.5rem';
@@ -427,8 +427,6 @@ function handleContentContainerStyle(iframe) {
         }
     }, 500);
 }
-
-
 
 function handleCloseModalClick(background, iframeContainer) {
     background.style.display = 'none';
