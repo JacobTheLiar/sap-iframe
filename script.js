@@ -1,6 +1,8 @@
 // Global variables
 const LOG_ENABLED = true;
 const IFRAME_URL = 'https://hcm-eu10-sales.hr.cloud.sap/sf/liveprofile?mdfObjectType=cust_kpr2';
+// Stała określająca tytuł dialogu, który ma być monitorowany
+const DIALOG_TITLE_TO_MONITOR = 'cust_kpr1:';
 
 function logInfo(logMessage) {
     if (LOG_ENABLED) {
@@ -74,8 +76,8 @@ function startClickSequence(iframe) {
                                 clearInterval(secondCheckInterval);
                                 triggerSAPButtonClick(secondButton);
 
-                                // WAŻNE: Monitoruj zmiany DOM po kliknięciu drugiego przycisku, aby wykryć moment pojawienia się przycisków
-                                monitorDialogAppearance(iframe);
+                                // ZMODYFIKOWANE: Rozpoczynamy monitorowanie widoczności dialogu z tytułem cust_kpr1:
+                                startDialogVisibilityMonitoring(iframe);
                             }
                         } catch (e) {
                             logError("Błąd podczas szukania drugiego przycisku: " + e);
@@ -93,148 +95,170 @@ function startClickSequence(iframe) {
     setTimeout(() => clearInterval(checkInterval), 10000);
 }
 
-// Nowa funkcja do ciągłego monitorowania zmian DOM w poszukiwaniu przycisków dialogu
-// Funkcja do monitorowania pojawienia się przycisków dialogu
-function monitorDialogAppearance(iframe) {
-    logInfo("Rozpoczynam monitorowanie pojawienia się przycisków Anuluj/Zapisz - nowa metoda");
+// NOWA FUNKCJA: monitorowanie widoczności dialogu zamiast przycisków
+function startDialogVisibilityMonitoring(iframe) {
+    logInfo(`Rozpoczynam monitorowanie widoczności dialogu z tytułem: ${DIALOG_TITLE_TO_MONITOR}`);
 
-    let buttonCheckCount = 0;
-    const maxChecks = 300; // Zwiększona liczba prób
+    let dialogFound = false;
+    let visibilityCheckCount = 0;
+    const maxChecks = 3000; // Maksymalna liczba prób monitorowania (5 minut przy interwale 100ms)
 
-    // Sprawdzaj regularnie, czy przyciski się pojawiły
-    const dialogCheckInterval = setInterval(() => {
-        buttonCheckCount++;
+    const dialogVisibilityInterval = setInterval(() => {
+        visibilityCheckCount++;
 
         try {
             const iframeDocument = iframe.contentDocument || iframe.contentWindow.document;
-            if (!iframeDocument) return;
-
-            if (buttonCheckCount % 10 === 0) {
-                logInfo(`Próba #${buttonCheckCount} wyszukania przycisków Anuluj/Zapisz`);
+            if (!iframeDocument) {
+                return;
             }
 
-            // Szukaj przycisków i dodaj obsługę zdarzeń
-            const foundButtons = findDialogButtons(iframeDocument);
-
-            if (foundButtons.cancelButton || foundButtons.saveButton) {
-                // Dodaj obsługę zdarzeń do znalezionych przycisków
-                if (foundButtons.cancelButton) {
-                    addCloseHandlerToButton(foundButtons.cancelButton, "Anuluj");
-                }
-
-                if (foundButtons.saveButton) {
-                    addCloseHandlerToButton(foundButtons.saveButton, "Zapisz");
-                }
-            } else if (buttonCheckCount >= maxChecks) {
-                logInfo("Osiągnięto maksymalną liczbę prób. Zatrzymuję sprawdzanie.");
-                clearInterval(dialogCheckInterval);
+            if (visibilityCheckCount % 30 === 0) {
+                logInfo(`Próba #${visibilityCheckCount} sprawdzania widoczności dialogu z tytułem: ${DIALOG_TITLE_TO_MONITOR}`);
             }
 
-            // Szukaj również przycisków w zagnieżdżonych iframe
-            processNestedIframes(iframeDocument);
+            // Sprawdzamy czy dialog z określonym tytułem jest widoczny
+            const isDialogVisible = checkDialogVisibility(iframeDocument);
+
+            // Jeśli dialog został znaleziony po raz pierwszy, zapisujemy tę informację
+            if (isDialogVisible && !dialogFound) {
+                dialogFound = true;
+                logInfo(`Dialog z tytułem ${DIALOG_TITLE_TO_MONITOR} został znaleziony po raz pierwszy.`);
+            }
+
+            // Jeśli dialog został znaleziony wcześniej, ale teraz zniknął, zamykamy iframe
+            if (dialogFound && !isDialogVisible) {
+                logInfo(`Dialog z tytułem ${DIALOG_TITLE_TO_MONITOR} był widoczny, ale zniknął. Zamykam iframe.`);
+                clearInterval(dialogVisibilityInterval);
+
+                // Zamykamy modal/iframe
+                const background = document.getElementById('myModal');
+                const iframeContainer = document.getElementById('iframeContainer');
+
+                if (background) background.style.display = 'none';
+                if (iframeContainer) iframeContainer.innerHTML = '';
+
+                return;
+            }
+
+            // Sprawdzamy również zagnieżdżone iframe
+            if (!isDialogVisible) {
+                const nestedDialogVisible = checkNestedIframesForDialog(iframeDocument);
+                if (nestedDialogVisible && !dialogFound) {
+                    dialogFound = true;
+                    logInfo(`Dialog z tytułem ${DIALOG_TITLE_TO_MONITOR} został znaleziony w zagnieżdżonym iframe.`);
+                } else if (dialogFound && !nestedDialogVisible) {
+                    logInfo(`Dialog z tytułem ${DIALOG_TITLE_TO_MONITOR} był widoczny w zagnieżdżonym iframe, ale zniknął. Zamykam iframe.`);
+                    clearInterval(dialogVisibilityInterval);
+
+                    // Zamykamy modal/iframe
+                    const background = document.getElementById('myModal');
+                    const iframeContainer = document.getElementById('iframeContainer');
+
+                    if (background) background.style.display = 'none';
+                    if (iframeContainer) iframeContainer.innerHTML = '';
+
+                    return;
+                }
+            }
+
+            // Jeśli osiągnęliśmy maksymalną liczbę prób, zatrzymujemy monitorowanie
+            if (visibilityCheckCount >= maxChecks) {
+                logInfo("Osiągnięto maksymalną liczbę prób. Zatrzymuję monitorowanie widoczności dialogu.");
+                clearInterval(dialogVisibilityInterval);
+            }
 
         } catch (e) {
-            logError("Błąd podczas monitorowania dialogu: " + e);
-            if (buttonCheckCount >= maxChecks) {
-                clearInterval(dialogCheckInterval);
+            logError("Błąd podczas monitorowania widoczności dialogu: " + e);
+            if (visibilityCheckCount >= maxChecks) {
+                clearInterval(dialogVisibilityInterval);
             }
         }
-    }, 100); // Częstsze sprawdzanie
+    }, 100);
 
-    // Zatrzymaj sprawdzanie po dłuższym czasie
+    // Zatrzymaj monitorowanie po dłuższym czasie (5 minut)
     setTimeout(() => {
-        clearInterval(dialogCheckInterval);
-        logInfo("Zakończono monitorowanie przycisków po upływie maksymalnego czasu");
-    }, 300000); // 5 minut
-}
-
-// Funkcja wyszukująca przyciski Anuluj/Zapisz w dokumencie
-function findDialogButtons(document) {
-    // 1. Szukaj po atrybutach data-help-id
-    const cancelByHelpId = document.querySelector('button[data-help-id="editPageCancelAddButton"]');
-    const saveByHelpId = document.querySelector('button[data-help-id="editPageSaveButton"]');
-
-    // 2. Szukaj po title
-    const cancelByTitle = document.querySelector('button[title="Anuluj"]');
-    const saveByTitle = document.querySelector('button[title="Zapisz"]');
-
-    // 3. Szukaj po tekście przycisku (sprawdzamy wszystkie przyciski)
-    let cancelByText = null;
-    let saveByText = null;
-
-    const buttons = document.querySelectorAll('button');
-    for (const button of buttons) {
-        const buttonText = button.textContent?.trim();
-        if (buttonText?.includes('Anuluj')) {
-            cancelByText = button;
-        } else if (buttonText?.includes('Zapisz')) {
-            saveByText = button;
+        if (dialogVisibilityInterval) {
+            clearInterval(dialogVisibilityInterval);
+            logInfo("Zakończono monitorowanie widoczności dialogu po upływie maksymalnego czasu");
         }
-    }
-
-    // Wybierz znalezione przyciski (w kolejności preferencji)
-    const cancelButton = cancelByHelpId || cancelByTitle || cancelByText;
-    const saveButton = saveByHelpId || saveByTitle || saveByText;
-
-    return { cancelButton, saveButton };
+    }, 300000);
 }
 
-// Funkcja dodająca obsługę zdarzenia do przycisku
-function addCloseHandlerToButton(button, buttonType) {
-    if (!button._hasCloseListener) {
-        // Dodajemy oznaczenie, że przycisk ma już obsługę zdarzenia
-        button._hasCloseListener = true;
-        button.setAttribute('data-listener', 'true');
+// Funkcja sprawdzająca widoczność dialogu z określonym tytułem
+function checkDialogVisibility(document) {
+    try {
+        // Szukamy tytułu dialogu na różne sposoby
 
-        // Przygotuj informacje debugowe
-        const buttonAttrs = {
-            id: button.id,
-            helpId: button.getAttribute('data-help-id'),
-            title: button.getAttribute('title'),
-            text: button.textContent?.trim(),
-            className: button.className
-        };
-        logInfo(`Znaleziono przycisk ${buttonType}: ${JSON.stringify(buttonAttrs)}`);
+        // 1. Sprawdzamy elementy h1 i h2, które mogą zawierać tytuł
+        const titleElements = document.querySelectorAll('h1, h2, .sapMTitle');
+        for (const titleElement of titleElements) {
+            if (titleElement.textContent && titleElement.textContent.includes(DIALOG_TITLE_TO_MONITOR)) {
+                // Sprawdzamy, czy element tytułu jest widoczny (część widocznego dialogu)
+                if (isElementVisible(titleElement)) {
+                    return true;
+                }
+            }
+        }
 
-        // Funkcja zamykająca modal
-        const closeFunc = function() {
-            logInfo(`KLIKNIĘCIE ${buttonType} - zamykam modal bezpośrednio`);
-            const background = document.getElementById('myModal');
-            const iframeContainer = document.getElementById('iframeContainer');
+        // 2. Sprawdzamy elementy zawierające tekst dialogu
+        const spanElements = document.querySelectorAll('span[id$="-inner"]');
+        for (const spanElement of spanElements) {
+            if (spanElement.textContent && spanElement.textContent.includes(DIALOG_TITLE_TO_MONITOR)) {
+                if (isElementVisible(spanElement)) {
+                    return true;
+                }
+            }
+        }
 
-            if (background) background.style.display = 'none';
-            if (iframeContainer) iframeContainer.innerHTML = '';
-        };
-
-        // Dodaj obsługę zdarzenia na dwa sposoby dla pewności
-        button.onclick = closeFunc;
-        button.addEventListener('click', closeFunc);
-        logInfo(`Dodano obsługę zdarzenia do przycisku ${buttonType}`);
+        return false;
+    } catch (e) {
+        logError("Błąd podczas sprawdzania widoczności dialogu: " + e);
+        return false;
     }
 }
 
-// Funkcja przetwarzająca zagnieżdżone ramki iframe
-function processNestedIframes(document) {
+// Funkcja sprawdzająca widoczność dialogu w zagnieżdżonych iframe
+function checkNestedIframesForDialog(document) {
     const nestedIframes = document.querySelectorAll('iframe');
     for (const nestedIframe of nestedIframes) {
         try {
             const nestedDoc = nestedIframe.contentDocument || nestedIframe.contentWindow.document;
             if (nestedDoc) {
-                const nestedButtons = nestedDoc.querySelectorAll('button');
-                for (const button of nestedButtons) {
-                    const buttonText = button.textContent?.trim();
-
-                    if (buttonText?.includes('Anuluj') && !button._hasCloseListener) {
-                        addCloseHandlerToButton(button, "ZAGNIEŻDŻONY Anuluj");
-                    } else if (buttonText?.includes('Zapisz') && !button._hasCloseListener) {
-                        addCloseHandlerToButton(button, "ZAGNIEŻDŻONY Zapisz");
-                    }
+                const isVisible = checkDialogVisibility(nestedDoc);
+                if (isVisible) {
+                    return true;
                 }
             }
         } catch (e) {
             // Ignoruj błędy dostępu do iframe z innego źródła
         }
     }
+    return false;
+}
+
+// Funkcja sprawdzająca, czy element jest widoczny
+function isElementVisible(element) {
+    if (!element) return false;
+
+    // Sprawdzamy style elementu i jego rodziców
+    let currentElement = element;
+    while (currentElement) {
+        const compStyles = window.getComputedStyle(currentElement);
+        if (compStyles.display === 'none' || compStyles.visibility === 'hidden' || compStyles.opacity === '0') {
+            return false;
+        }
+
+        // Sprawdzamy, czy element jest częścią dialogu, który jest już zamknięty
+        if (currentElement.classList &&
+            (currentElement.classList.contains('sapMDialogClosed') ||
+                !currentElement.classList.contains('sapMDialogOpen'))) {
+            return false;
+        }
+
+        currentElement = currentElement.parentElement;
+    }
+
+    return true;
 }
 
 // Funkcja znajdująca przycisk SAP UI5 po ID
