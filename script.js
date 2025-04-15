@@ -30,7 +30,11 @@ function createModal() {
     iframeContainer.appendChild(iframe);
 
     handleContentContainerStyle(iframe);
+
+    // Poprawione dodawanie obsługi zdarzenia dla przycisku zamykania
+    closeModal.onclick = () => handleCloseModalClick(background, iframeContainer);
     closeModal.addEventListener('click', () => handleCloseModalClick(background, iframeContainer));
+
     window.addEventListener('click', (event) => handleWindowClick(event, background, iframeContainer));
     setupAcceptButtonListener(iframe, background, iframeContainer);
 
@@ -103,7 +107,8 @@ function startDialogVisibilityMonitoring(iframe) {
     let visibilityCheckCount = 0;
     const maxChecks = 3000; // Maksymalna liczba prób monitorowania (5 minut przy interwale 100ms)
 
-    const dialogVisibilityInterval = setInterval(() => {
+    // Zapisujemy referencję do interwału globalnie, aby móc go zatrzymać z innych funkcji
+    window.dialogVisibilityInterval = setInterval(() => {
         visibilityCheckCount++;
 
         try {
@@ -117,7 +122,7 @@ function startDialogVisibilityMonitoring(iframe) {
             }
 
             // Używamy nowej, bardziej ogólnej metody do sprawdzania widoczności dialogu
-            const isDialogVisible = isDialogPresent(iframeDocument);
+            const isDialogVisible = isDialogPresent(iframeDocument) || findDialogByContent(iframeDocument);
 
             // Jeśli dialog został znaleziony po raz pierwszy, zapisujemy tę informację
             if (isDialogVisible && !dialogFound) {
@@ -128,7 +133,8 @@ function startDialogVisibilityMonitoring(iframe) {
             // Jeśli dialog został znaleziony wcześniej, ale teraz zniknął, zamykamy iframe
             if (dialogFound && !isDialogVisible) {
                 logInfo(`Dialog z tytułem ${DIALOG_TITLE_TO_MONITOR} był widoczny, ale zniknął. Zamykam iframe.`);
-                clearInterval(dialogVisibilityInterval);
+                clearInterval(window.dialogVisibilityInterval);
+                window.dialogVisibilityInterval = null;
 
                 // Zamykamy modal/iframe
                 const background = document.getElementById('myModal');
@@ -151,7 +157,7 @@ function startDialogVisibilityMonitoring(iframe) {
                         const frameDoc = frame.contentDocument || frame.contentWindow.document;
                         if (frameDoc) {
                             // Używamy nowej metody również do zagnieżdżonych iframe
-                            if (isDialogPresent(frameDoc)) {
+                            if (isDialogPresent(frameDoc) || findDialogByContent(frameDoc)) {
                                 nestedDialogFound = true;
                                 break;
                             }
@@ -161,7 +167,7 @@ function startDialogVisibilityMonitoring(iframe) {
                             for (const nestedFrame of nestedFrames) {
                                 try {
                                     const nestedDoc = nestedFrame.contentDocument || nestedFrame.contentWindow.document;
-                                    if (nestedDoc && isDialogPresent(nestedDoc)) {
+                                    if (nestedDoc && (isDialogPresent(nestedDoc) || findDialogByContent(nestedDoc))) {
                                         nestedDialogFound = true;
                                         break;
                                     }
@@ -182,7 +188,8 @@ function startDialogVisibilityMonitoring(iframe) {
                     logInfo(`Dialog z tytułem ${DIALOG_TITLE_TO_MONITOR} został znaleziony w zagnieżdżonym iframe.`);
                 } else if (dialogFound && !nestedDialogFound) {
                     logInfo(`Dialog z tytułem ${DIALOG_TITLE_TO_MONITOR} był widoczny w zagnieżdżonym iframe, ale zniknął. Zamykam iframe.`);
-                    clearInterval(dialogVisibilityInterval);
+                    clearInterval(window.dialogVisibilityInterval);
+                    window.dialogVisibilityInterval = null;
 
                     // Zamykamy modal/iframe
                     const background = document.getElementById('myModal');
@@ -198,21 +205,24 @@ function startDialogVisibilityMonitoring(iframe) {
             // Jeśli osiągnęliśmy maksymalną liczbę prób, zatrzymujemy monitorowanie
             if (visibilityCheckCount >= maxChecks) {
                 logInfo("Osiągnięto maksymalną liczbę prób. Zatrzymuję monitorowanie widoczności dialogu.");
-                clearInterval(dialogVisibilityInterval);
+                clearInterval(window.dialogVisibilityInterval);
+                window.dialogVisibilityInterval = null;
             }
 
         } catch (e) {
             logError("Błąd podczas monitorowania widoczności dialogu: " + e);
             if (visibilityCheckCount >= maxChecks) {
-                clearInterval(dialogVisibilityInterval);
+                clearInterval(window.dialogVisibilityInterval);
+                window.dialogVisibilityInterval = null;
             }
         }
     }, 100);
 
     // Zatrzymaj monitorowanie po dłuższym czasie (5 minut)
     setTimeout(() => {
-        if (dialogVisibilityInterval) {
-            clearInterval(dialogVisibilityInterval);
+        if (window.dialogVisibilityInterval) {
+            clearInterval(window.dialogVisibilityInterval);
+            window.dialogVisibilityInterval = null;
             logInfo("Zakończono monitorowanie widoczności dialogu po upływie maksymalnego czasu");
         }
     }, 300000);
