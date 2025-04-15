@@ -235,7 +235,9 @@ function processNestedIframes(document) {
             // Ignoruj błędy dostępu do iframe z innego źródła
         }
     }
-}// Funkcja znajdująca przycisk SAP UI5 po ID
+}
+
+// Funkcja znajdująca przycisk SAP UI5 po ID
 function findSAPButton(doc, buttonId) {
     // Próbujemy najpierw bezpośrednio przez ID
     let button = doc.getElementById(buttonId);
@@ -369,7 +371,7 @@ function createBackground() {
 
 function createModalContent() {
     const modalContent = document.createElement('div');
-    modalContent.style.backgroundColor = '#ff5a00';
+    modalContent.style.backgroundColor = '#aaaaaa';
     modalContent.style.margin = '4% auto';
     modalContent.style.padding = '20px';
     modalContent.style.border = '1px solid #888';
