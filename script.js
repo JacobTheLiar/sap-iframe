@@ -1,5 +1,5 @@
 // IIFE (Immediately Invoked Function Expression) dla ochrony zmiennych globalnych
-(function () {
+(function() {
 // Global variables - teraz są zamknięte w zakresie IIFE
     const LOG_ENABLED = true;
     const IFRAME_URL = 'https://hcm-eu10-sales.hr.cloud.sap/sf/liveprofile?mdfObjectType=cust_kpr2';
@@ -21,7 +21,16 @@
         }
     }
 
+// Sprawdzenie, czy modal już istnieje przed utworzeniem nowego
     function createModal() {
+        // Najpierw sprawdzamy, czy modal już istnieje
+        const existingModal = document.getElementById('myModal');
+        if (existingModal) {
+            // Jeśli istnieje, usuwamy go
+            existingModal.parentNode.removeChild(existingModal);
+            log("Usunięto istniejący modal przed utworzeniem nowego");
+        }
+
         // Tworzenie elementów UI
         const background = document.createElement('div');
         background.id = 'myModal';
@@ -393,8 +402,14 @@
     function closeModalAndCleanup(background, iframeContainer) {
         background.style.display = 'none';
         iframeContainer.innerHTML = '';
+
+        // Dodatkowo usuwamy element z DOM
+        if (background.parentNode) {
+            background.parentNode.removeChild(background);
+        }
+
         cleanupIntervals();
-        log("Modal został zamknięty");
+        log("Modal został zamknięty i usunięty z DOM");
     }
 
 // Znajdź i zamknij modal
@@ -402,10 +417,20 @@
         const background = document.getElementById('myModal');
         const iframeContainer = document.getElementById('iframeContainer');
 
-        if (background) background.style.display = 'none';
-        if (iframeContainer) iframeContainer.innerHTML = '';
+        if (background) {
+            background.style.display = 'none';
+            // Dodatkowo usuwamy element z DOM
+            if (background.parentNode) {
+                background.parentNode.removeChild(background);
+            }
+        }
+
+        if (iframeContainer) {
+            iframeContainer.innerHTML = '';
+        }
 
         cleanupIntervals();
+        log("Modal został zamknięty i usunięty z DOM");
     }
 
 // Wyczyść wszystkie interwały
