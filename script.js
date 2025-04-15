@@ -37,7 +37,7 @@
         background.style.cssText = 'position: fixed; z-index: 1; left: 0; top: 0; width: 100%; height: 100%; overflow: auto; background-color: rgba(0, 0, 0, 0.5); display: block;';
 
         const modalContent = document.createElement('div');
-        modalContent.style.cssText = 'background-color: #aaaaaa; margin: 4% auto; padding: 20px; border: 1px solid #888; width: 645px; border-radius: 2rem;';
+        modalContent.style.cssText = 'background-color: #0064d9; margin: 4% auto; padding: 20px; border: 1px solid #888; width: 645px; border-radius: 2rem;';
 
         const closeModal = document.createElement('span');
         closeModal.innerHTML = '&times;';
