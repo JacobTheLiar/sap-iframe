@@ -1,361 +1,264 @@
 // Global variables
 const LOG_ENABLED = true;
 const IFRAME_URL = 'https://hcm-eu10-sales.hr.cloud.sap/sf/liveprofile?mdfObjectType=cust_kpr2';
-// Stała określająca tytuł dialogu, który ma być monitorowany
 const DIALOG_TITLE_TO_MONITOR = 'cust_kpr1:';
+const CHECK_INTERVAL_MS = 300;
+const DIALOG_CHECK_INTERVAL_MS = 200;
+const MAX_DIALOG_CHECKS = 1500; // 5 minut przy interwale 200ms
 
-function logInfo(logMessage) {
-    if (LOG_ENABLED) {
-        console.log(logMessage);
-    }
-}
+// Przechowywanie referencji do interwałów dla łatwiejszego czyszczenia
+const intervals = {
+    buttonCheck: null,
+    dialogVisibility: null,
+    contentContainer: null
+};
 
-function logError(errorMessage) {
+function log(message, isError = false) {
     if (LOG_ENABLED) {
-        console.error(errorMessage);
+        isError ? console.error(message) : console.log(message);
     }
 }
 
 function createModal() {
-    const background = createBackground();
-    const modalContent = createModalContent();
-    const closeModal = createCloseModal();
-    const iframeContainer = createIframeContainer();
-    const iframe = createIframe(IFRAME_URL);
+    // Tworzenie elementów UI
+    const background = document.createElement('div');
+    background.id = 'myModal';
+    background.style.cssText = 'position: fixed; z-index: 1; left: 0; top: 0; width: 100%; height: 100%; overflow: auto; background-color: rgba(0, 0, 0, 0.5); display: block;';
 
+    const modalContent = document.createElement('div');
+    modalContent.style.cssText = 'background-color: #aaaaaa; margin: 4% auto; padding: 20px; border: 1px solid #888; width: 645px; border-radius: 2rem;';
+
+    const closeModal = document.createElement('span');
+    closeModal.innerHTML = '&times;';
+    closeModal.style.cssText = 'cursor: pointer; float: right; font-size: 28px; font-weight: bold;';
+
+    const iframeContainer = document.createElement('div');
+    iframeContainer.id = 'iframeContainer';
+    iframeContainer.style.position = 'relative';
+
+    const iframe = document.createElement('iframe');
+    iframe.id = 'iframe';
+    iframe.src = IFRAME_URL;
+    iframe.style.cssText = 'width: 100%; height: 460px; border: none; border-radius: 1.5rem;';
+
+    // Dodanie elementów do DOM
     document.body.appendChild(background);
     background.appendChild(modalContent);
     modalContent.appendChild(closeModal);
     modalContent.appendChild(iframeContainer);
     iframeContainer.appendChild(iframe);
 
-    handleContentContainerStyle(iframe);
+    // Obsługa zdarzeń
+    closeModal.addEventListener('click', () => closeModalAndCleanup(background, iframeContainer));
+    background.addEventListener('click', (event) => {
+        if (event.target === background) {
+            closeModalAndCleanup(background, iframeContainer);
+        }
+    });
 
-    // Poprawione dodawanie obsługi zdarzenia dla przycisku zamykania
-    closeModal.onclick = () => handleCloseModalClick(background, iframeContainer);
-    closeModal.addEventListener('click', () => handleCloseModalClick(background, iframeContainer));
-
-    window.addEventListener('click', (event) => handleWindowClick(event, background, iframeContainer));
-    setupAcceptButtonListener(iframe, background, iframeContainer);
-
-    iframe.onload = () => handleIframeLoad(iframe);
+    // Inicjalizacja
+    iframe.onload = () => {
+        checkContentContainerStyle(iframe);
+        setTimeout(() => startClickSequence(iframe), 800);
+    };
 }
 
-// Główna funkcja sterująca sekwencją kliknięć
-function startClickSequence(iframe) {
-    logInfo("Rozpoczynam sekwencję kliknięć");
-
-    // Funkcja sprawdzająca dostępność elementów w regularnych odstępach czasu
-    const checkInterval = setInterval(() => {
+function checkContentContainerStyle(iframe) {
+    intervals.contentContainer = setInterval(() => {
         try {
-            const iframeDocument = iframe.contentDocument || iframe.contentWindow.document;
-            if (!iframeDocument) {
-                logInfo("Dokument iframe niedostępny, próbuję ponownie...");
-                return;
+            const iframeDocument = getIframeDocument(iframe);
+            if (!iframeDocument) return;
+
+            const contentContainer = iframeDocument.getElementById('contentContainer');
+            if (contentContainer) {
+                contentContainer.style.cssText = 'margin: 20px; border: 0px; background: none;';
+                clearInterval(intervals.contentContainer);
+                intervals.contentContainer = null;
             }
+        } catch (e) {
+            log('Error accessing iframe content: ' + e, true);
+            clearInterval(intervals.contentContainer);
+            intervals.contentContainer = null;
+        }
+    }, CHECK_INTERVAL_MS);
+}
+
+function startClickSequence(iframe) {
+    log("Rozpoczynam sekwencję kliknięć");
+
+    intervals.buttonCheck = setInterval(() => {
+        try {
+            const iframeDocument = getIframeDocument(iframe);
+            if (!iframeDocument) return;
 
             // Szukamy pierwszego przycisku
-            const firstButton = findSAPButton(iframeDocument, "__button2");
+            const firstButton = findButtonInDocument(iframeDocument, "__button2");
             if (firstButton) {
-                logInfo("Znaleziono przycisk Edytuj - ID: __button2");
+                log("Znaleziono przycisk Edytuj - ID: __button2");
+                clearInterval(intervals.buttonCheck);
+                intervals.buttonCheck = null;
 
-                // Zatrzymujemy interwał po znalezieniu przycisku
-                clearInterval(checkInterval);
+                // Klikamy w przycisk
+                clickButton(firstButton);
 
-                // Klikamy w przycisk na różne sposoby
-                triggerSAPButtonClick(firstButton);
-
-                // Po kliknięciu pierwszego przycisku ustawiamy timeout na kliknięcie drugiego
+                // Ustawiamy timeout na kliknięcie drugiego przycisku
                 setTimeout(() => {
-                    logInfo("Szukam drugiego przycisku...");
-                    const secondCheckInterval = setInterval(() => {
+                    log("Szukam drugiego przycisku...");
+                    const secondInterval = setInterval(() => {
                         try {
-                            const updatedDoc = iframe.contentDocument || iframe.contentWindow.document;
+                            const updatedDoc = getIframeDocument(iframe);
                             if (!updatedDoc) return;
 
-                            const secondButton = findSAPButton(updatedDoc, "__button12");
+                            const secondButton = findButtonInDocument(updatedDoc, "__button12");
                             if (secondButton) {
-                                logInfo("Znaleziono przycisk Dodaj - ID: __button12");
+                                log("Znaleziono przycisk Dodaj - ID: __button12");
+                                clearInterval(secondInterval);
 
-                                clearInterval(secondCheckInterval);
-                                triggerSAPButtonClick(secondButton);
-
-                                // ZMODYFIKOWANE: Rozpoczynamy monitorowanie widoczności dialogu z tytułem cust_kpr1:
-                                startDialogVisibilityMonitoring(iframe);
+                                clickButton(secondButton);
+                                startDialogMonitoring(iframe);
                             }
                         } catch (e) {
-                            logError("Błąd podczas szukania drugiego przycisku: " + e);
+                            log("Błąd podczas szukania drugiego przycisku: " + e, true);
                         }
-                    }, 300);
+                    }, CHECK_INTERVAL_MS);
 
-                    setTimeout(() => clearInterval(secondCheckInterval), 10000);
+                    // Czyszczenie interwału po czasie
+                    setTimeout(() => {
+                        clearInterval(secondInterval);
+                    }, 10000);
                 }, 800);
             }
         } catch (e) {
-            logError("Błąd podczas sprawdzania przycisków: " + e);
+            log("Błąd podczas sprawdzania przycisków: " + e, true);
         }
-    }, 300);
+    }, CHECK_INTERVAL_MS);
 
-    setTimeout(() => clearInterval(checkInterval), 10000);
+    // Czyszczenie interwału po czasie
+    setTimeout(() => {
+        if (intervals.buttonCheck) {
+            clearInterval(intervals.buttonCheck);
+            intervals.buttonCheck = null;
+        }
+    }, 10000);
 }
 
-// NOWA FUNKCJA: monitorowanie widoczności dialogu zamiast przycisków
-function startDialogVisibilityMonitoring(iframe) {
-    logInfo(`Rozpoczynam monitorowanie widoczności dialogu z tytułem: ${DIALOG_TITLE_TO_MONITOR}`);
+function startDialogMonitoring(iframe) {
+    log(`Rozpoczynam monitorowanie dialogu: ${DIALOG_TITLE_TO_MONITOR}`);
 
     let dialogFound = false;
-    let visibilityCheckCount = 0;
-    const maxChecks = 3000; // Maksymalna liczba prób monitorowania (5 minut przy interwale 100ms)
+    let checkCount = 0;
 
-    // Zapisujemy referencję do interwału globalnie, aby móc go zatrzymać z innych funkcji
-    window.dialogVisibilityInterval = setInterval(() => {
-        visibilityCheckCount++;
+    intervals.dialogVisibility = setInterval(() => {
+        checkCount++;
 
         try {
-            const iframeDocument = iframe.contentDocument || iframe.contentWindow.document;
-            if (!iframeDocument) {
-                return;
+            if (checkCount % 15 === 0) {
+                log(`Monitorowanie dialogu, próba #${checkCount}`);
             }
 
-            if (visibilityCheckCount % 30 === 0) {
-                logInfo(`Próba #${visibilityCheckCount} sprawdzania widoczności dialogu z tytułem: ${DIALOG_TITLE_TO_MONITOR}`);
-            }
+            // Sprawdzamy czy dialog jest obecny
+            const isVisible = checkDocumentForDialog(iframe);
 
-            // Używamy nowej, bardziej ogólnej metody do sprawdzania widoczności dialogu
-            const isDialogVisible = isDialogPresent(iframeDocument) || findDialogByContent(iframeDocument);
-
-            // Jeśli dialog został znaleziony po raz pierwszy, zapisujemy tę informację
-            if (isDialogVisible && !dialogFound) {
+            // Dialog został znaleziony po raz pierwszy
+            if (isVisible && !dialogFound) {
                 dialogFound = true;
-                logInfo(`Dialog z tytułem ${DIALOG_TITLE_TO_MONITOR} został znaleziony po raz pierwszy.`);
+                log(`Dialog został znaleziony po raz pierwszy`);
             }
 
-            // Jeśli dialog został znaleziony wcześniej, ale teraz zniknął, zamykamy iframe
-            if (dialogFound && !isDialogVisible) {
-                logInfo(`Dialog z tytułem ${DIALOG_TITLE_TO_MONITOR} był widoczny, ale zniknął. Zamykam iframe.`);
-                clearInterval(window.dialogVisibilityInterval);
-                window.dialogVisibilityInterval = null;
-
-                // Zamykamy modal/iframe
-                const background = document.getElementById('myModal');
-                const iframeContainer = document.getElementById('iframeContainer');
-
-                if (background) background.style.display = 'none';
-                if (iframeContainer) iframeContainer.innerHTML = '';
-
+            // Dialog był widoczny ale zniknął - zamykamy iframe
+            if (dialogFound && !isVisible) {
+                log(`Dialog zniknął - zamykam iframe`);
+                cleanupAndCloseModal();
                 return;
             }
 
-            // Sprawdzamy zagnieżdżone iframe
-            if (!isDialogVisible) {
-                let nestedDialogFound = false;
-
-                // Pobieramy wszystkie iframe z dokumentu
-                const frames = iframeDocument.querySelectorAll('iframe');
-                for (const frame of frames) {
-                    try {
-                        const frameDoc = frame.contentDocument || frame.contentWindow.document;
-                        if (frameDoc) {
-                            // Używamy nowej metody również do zagnieżdżonych iframe
-                            if (isDialogPresent(frameDoc) || findDialogByContent(frameDoc)) {
-                                nestedDialogFound = true;
-                                break;
-                            }
-
-                            // Sprawdzamy jeszcze głębiej zagnieżdżone iframe (do 2 poziomów)
-                            const nestedFrames = frameDoc.querySelectorAll('iframe');
-                            for (const nestedFrame of nestedFrames) {
-                                try {
-                                    const nestedDoc = nestedFrame.contentDocument || nestedFrame.contentWindow.document;
-                                    if (nestedDoc && (isDialogPresent(nestedDoc) || findDialogByContent(nestedDoc))) {
-                                        nestedDialogFound = true;
-                                        break;
-                                    }
-                                } catch (e) {
-                                    // Ignoruj błędy dostępu do iframe z innego źródła
-                                }
-                            }
-
-                            if (nestedDialogFound) break;
-                        }
-                    } catch (e) {
-                        // Ignoruj błędy dostępu do iframe z innego źródła
-                    }
-                }
-
-                if (nestedDialogFound && !dialogFound) {
-                    dialogFound = true;
-                    logInfo(`Dialog z tytułem ${DIALOG_TITLE_TO_MONITOR} został znaleziony w zagnieżdżonym iframe.`);
-                } else if (dialogFound && !nestedDialogFound) {
-                    logInfo(`Dialog z tytułem ${DIALOG_TITLE_TO_MONITOR} był widoczny w zagnieżdżonym iframe, ale zniknął. Zamykam iframe.`);
-                    clearInterval(window.dialogVisibilityInterval);
-                    window.dialogVisibilityInterval = null;
-
-                    // Zamykamy modal/iframe
-                    const background = document.getElementById('myModal');
-                    const iframeContainer = document.getElementById('iframeContainer');
-
-                    if (background) background.style.display = 'none';
-                    if (iframeContainer) iframeContainer.innerHTML = '';
-
-                    return;
-                }
+            // Osiągnięto maksymalną liczbę sprawdzeń
+            if (checkCount >= MAX_DIALOG_CHECKS) {
+                log("Osiągnięto maksymalną liczbę sprawdzeń dialogu");
+                cleanupIntervals();
             }
-
-            // Jeśli osiągnęliśmy maksymalną liczbę prób, zatrzymujemy monitorowanie
-            if (visibilityCheckCount >= maxChecks) {
-                logInfo("Osiągnięto maksymalną liczbę prób. Zatrzymuję monitorowanie widoczności dialogu.");
-                clearInterval(window.dialogVisibilityInterval);
-                window.dialogVisibilityInterval = null;
-            }
-
         } catch (e) {
-            logError("Błąd podczas monitorowania widoczności dialogu: " + e);
-            if (visibilityCheckCount >= maxChecks) {
-                clearInterval(window.dialogVisibilityInterval);
-                window.dialogVisibilityInterval = null;
+            log("Błąd monitorowania dialogu: " + e, true);
+            if (checkCount >= MAX_DIALOG_CHECKS) {
+                cleanupIntervals();
             }
         }
-    }, 100);
-
-    // Zatrzymaj monitorowanie po dłuższym czasie (5 minut)
-    setTimeout(() => {
-        if (window.dialogVisibilityInterval) {
-            clearInterval(window.dialogVisibilityInterval);
-            window.dialogVisibilityInterval = null;
-            logInfo("Zakończono monitorowanie widoczności dialogu po upływie maksymalnego czasu");
-        }
-    }, 300000);
+    }, DIALOG_CHECK_INTERVAL_MS);
 }
 
-// Funkcja sprawdzająca widoczność dialogu z określonym tytułem
-function checkDialogVisibility(document) {
+// Funkcja sprawdzająca dokument i jego zagnieżdżone iframe
+function checkDocumentForDialog(iframe, depth = 0) {
+    if (depth > 2) return false; // Ograniczenie głębokości zagnieżdżenia
+
     try {
-        // Sprawdzamy wszystkie dialogi SAP UI5 po klasach
-        const dialogs = document.querySelectorAll('.sapMDialog, .sapMPopup-CTX, .sapMDialogOpen');
+        const doc = getIframeDocument(iframe);
+        if (!doc) return false;
 
-        for (const dialog of dialogs) {
-            // Unikamy badania ID, sprawdzamy czy dialog jest widoczny po stylach
-            if (getComputedStyle(dialog).visibility !== 'hidden' && getComputedStyle(dialog).display !== 'none') {
-                // Sprawdzamy czy dialog zawiera tytuł, którego szukamy
-                const titleTexts = dialog.querySelectorAll('.sapMTitle, .sapMDialogTitle, .sapMIBarText, h1, h2, .sapUiInvisibleText');
+        // Sprawdzamy dialog w głównym dokumencie
+        if (isDialogVisible(doc)) return true;
 
-                for (const titleText of titleTexts) {
-                    if (titleText.textContent && titleText.textContent.includes(DIALOG_TITLE_TO_MONITOR)) {
-                        return true;
-                    }
-                }
-
-                // Sprawdzamy wszystkie elementy span w dialogu
-                const spans = dialog.querySelectorAll('span');
-                for (const span of spans) {
-                    if (span.textContent && span.textContent.includes(DIALOG_TITLE_TO_MONITOR)) {
-                        return true;
-                    }
-                }
-            }
-        }
-
-        // Sprawdzamy też po zawartości bez względu na strukturę (jako ostatnia deska ratunku)
-        const allElements = document.querySelectorAll('*');
-        for (const element of allElements) {
-            // Sprawdzamy tylko elementy, które mogą zawierać tekst i są widoczne
-            if (element.textContent &&
-                element.textContent.includes(DIALOG_TITLE_TO_MONITOR) &&
-                getComputedStyle(element).visibility !== 'hidden' &&
-                getComputedStyle(element).display !== 'none') {
-
-                // Sprawdzamy, czy element jest częścią dialogu
-                const isInDialog = element.closest('.sapMDialog') ||
-                    element.closest('.sapMPopup-CTX') ||
-                    element.closest('.sapMDialogOpen');
-
-                if (isInDialog) {
+        // Sprawdzamy wszystkie zagnieżdżone iframe
+        const frames = doc.querySelectorAll('iframe');
+        for (const frame of frames) {
+            try {
+                if (checkDocumentForDialog(frame, depth + 1)) {
                     return true;
                 }
+            } catch (e) {
+                // Ignorujemy błędy dostępu do iframe z innego źródła
             }
         }
-
-        return false;
     } catch (e) {
-        logError("Błąd podczas sprawdzania widoczności dialogu: " + e);
-        return false;
+        log("Błąd podczas sprawdzania dokumentu: " + e, true);
     }
+
+    return false;
 }
 
-// Funkcja znajdująca dialog po treści, bez polegania na ID
-function findDialogByContent(document) {
+// Optymalizacja sprawdzania widoczności dialogu
+function isDialogVisible(doc) {
     try {
-        // Szukamy najpierw po atrybutach danych zamiast po ID
-        const allElements = document.querySelectorAll('[data-help-id], [aria-label], [title]');
+        // Sprawdzamy dialogi po klasach SAP UI5
+        const dialogSelectors = [
+            '.sapMDialog.sapMDialogOpen',
+            '.sapMPopup-CTX:not(.sapMDialogClosed)',
+            '.sapMDialog',
+            '.sapMPopup-CTX',
+            '.sapMDialogOpen'
+        ];
 
-        for (const element of allElements) {
-            // Sprawdzamy różne atrybuty które mogą zawierać informacje o dialogu
-            const helpId = element.getAttribute('data-help-id');
-            const ariaLabel = element.getAttribute('aria-label');
-            const title = element.getAttribute('title');
+        // Łączymy selektory dla jednego zapytania
+        const dialogElements = doc.querySelectorAll(dialogSelectors.join(', '));
 
-            // Sprawdzamy czy którykolwiek z atrybutów zawiera szukany tekst
-            if ((helpId && helpId.includes('kpr1')) ||
-                (ariaLabel && ariaLabel.includes('kpr1')) ||
-                (title && title.includes('kpr1'))) {
-
-                // Sprawdzamy czy element jest widoczny
-                if (getComputedStyle(element).display !== 'none' &&
-                    getComputedStyle(element).visibility !== 'hidden') {
-                    return true;
-                }
-            }
-
-            // Sprawdzamy również bezpośrednią zawartość tekstową
-            if (element.textContent && element.textContent.includes(DIALOG_TITLE_TO_MONITOR)) {
-                // Sprawdzamy, czy element jest częścią dialogu SAP po klasach
-                if (element.closest('.sapMDialog') ||
-                    element.closest('.sapMPopup-CTX') ||
-                    element.closest('.sapMDialogOpen')) {
-                    return true;
-                }
+        for (const dialog of dialogElements) {
+            if (isElementVisible(dialog) &&
+                dialog.textContent &&
+                dialog.textContent.indexOf(DIALOG_TITLE_TO_MONITOR) !== -1) {
+                return true;
             }
         }
 
-        return false;
-    } catch (e) {
-        logError("Błąd podczas szukania dialogu po treści: " + e);
-        return false;
-    }
-}
+        // Sprawdzamy nagłówki dialogów
+        const headerSelectors = [
+            '.sapMDialogTitle',
+            '.sapMIBar.sapMHeader-CTX',
+            '.sapMBarMiddle'
+        ];
 
-// Funkcja sprawdzająca, czy dialog jest widoczny - bardziej ogólna implementacja
-function isDialogPresent(document) {
-    try {
-        // Sprawdzamy obecność dialogu po klasach SAP UI5, bez polegania na ID
-        const sapDialogs = document.querySelectorAll('.sapMDialog.sapMDialogOpen, .sapMPopup-CTX:not(.sapMDialogClosed)');
+        const headerElements = doc.querySelectorAll(headerSelectors.join(', '));
 
-        for (const dialog of sapDialogs) {
-            // Sprawdzamy styl widoczności
-            const dialogStyle = getComputedStyle(dialog);
-            if (dialogStyle.display !== 'none' && dialogStyle.visibility !== 'hidden') {
-                // Sprawdzamy, czy dialog zawiera tekst, którego szukamy
-                if (dialog.textContent && dialog.textContent.includes(DIALOG_TITLE_TO_MONITOR)) {
-                    return true;
-                }
-            }
-        }
+        for (const header of headerElements) {
+            if (isElementVisible(header) &&
+                header.textContent &&
+                header.textContent.indexOf(DIALOG_TITLE_TO_MONITOR) !== -1) {
 
-        // Alternatywne podejście - szukamy elementów nagłówka dialogu
-        const dialogHeaders = document.querySelectorAll('.sapMDialogTitle, .sapMIBar.sapMHeader-CTX, .sapMBarMiddle');
-        for (const header of dialogHeaders) {
-            if (header.textContent && header.textContent.includes(DIALOG_TITLE_TO_MONITOR)) {
-                // Sprawdzamy, czy nagłówek jest częścią widocznego dialogu (przez rodzica)
+                // Sprawdzamy, czy nagłówek jest częścią widocznego dialogu
                 let parent = header.parentElement;
                 while (parent) {
                     if (parent.classList &&
                         parent.classList.contains('sapMDialog') &&
-                        !parent.classList.contains('sapMDialogClosed')) {
-                        const parentStyle = getComputedStyle(parent);
-                        if (parentStyle.display !== 'none' && parentStyle.visibility !== 'hidden') {
-                            return true;
-                        }
+                        isElementVisible(parent)) {
+                        return true;
                     }
                     parent = parent.parentElement;
                 }
@@ -364,259 +267,154 @@ function isDialogPresent(document) {
 
         return false;
     } catch (e) {
-        logError("Błąd podczas sprawdzania obecności dialogu: " + e);
+        log("Błąd podczas sprawdzania widoczności dialogu: " + e, true);
         return false;
     }
 }
 
-// Funkcja znajdująca przycisk SAP UI5 po ID
-function findSAPButton(doc, buttonId) {
-    // Próbujemy najpierw bezpośrednio przez ID
-    let button = doc.getElementById(buttonId);
+// Sprawdzenie czy element jest widoczny
+function isElementVisible(element) {
+    const style = getComputedStyle(element);
+    return style.display !== 'none' && style.visibility !== 'hidden';
+}
+
+// Zoptymalizowana funkcja do znajdowania przycisku w dokumencie
+function findButtonInDocument(doc, buttonId) {
+    // Próbujemy znaleźć przycisk na różne sposoby
+    let button = doc.getElementById(buttonId) ||
+        doc.querySelector(`button[id="${buttonId}"]`) ||
+        doc.querySelector(`button[data-sap-ui="${buttonId}"]`);
+
     if (button) return button;
 
-    // Jeśli nie znaleziono, próbujemy przez selektor
-    button = doc.querySelector(`button[id="${buttonId}"]`);
-    if (button) return button;
+    // Rekurencyjne przeszukiwanie iframe
+    return findButtonInIframes(doc, buttonId);
+}
 
-    // Próbujemy przez atrybut data-sap-ui
-    button = doc.querySelector(`button[data-sap-ui="${buttonId}"]`);
-    if (button) return button;
-
-    // Jeśli wciąż nie znaleziono, sprawdzamy wszystkie ramki w dokumencie
+// Pomocnicza funkcja do znajdowania przycisku w iframe
+function findButtonInIframes(doc, buttonId) {
     const frames = doc.querySelectorAll('iframe');
     for (const frame of frames) {
         try {
-            const frameDoc = frame.contentDocument || frame.contentWindow.document;
-            if (frameDoc) {
-                const frameButton = findSAPButton(frameDoc, buttonId);
-                if (frameButton) return frameButton;
-            }
+            const frameDoc = getIframeDocument(frame);
+            if (!frameDoc) continue;
+
+            let button = frameDoc.getElementById(buttonId) ||
+                frameDoc.querySelector(`button[id="${buttonId}"]`) ||
+                frameDoc.querySelector(`button[data-sap-ui="${buttonId}"]`);
+
+            if (button) return button;
+
+            // Rekurencyjne sprawdzenie zagnieżdżonych iframe
+            button = findButtonInIframes(frameDoc, buttonId);
+            if (button) return button;
         } catch (e) {
-            logInfo("Brak dostępu do zawartości iframe: " + e);
+            // Ignorujemy błędy dostępu do iframe z innego źródła
         }
     }
     return null;
 }
 
-// Funkcja wywołująca kliknięcie na różne sposoby
-// Główna funkcja klikająca przycisk na różne sposoby
-function triggerSAPButtonClick(button) {
-    logInfo("Próbuję kliknąć przycisk na różne sposoby");
-    performStandardClick(button);
-    performMouseEventClick(button);
-    performInnerElementClick(button);
-    performScriptExecution(button);
-}
+// Zoptymalizowana funkcja klikania przycisku
+function clickButton(button) {
+    log("Klikam przycisk");
 
-function performStandardClick(button) {
-// Funkcja wykonująca standardowe kliknięcie
-    button.click();
-    logInfo("Wykonano standardowe kliknięcie");
-}
-
-function performMouseEventClick(button) {
-// Funkcja symulująca zdarzenie myszy
     try {
+        // Standardowe kliknięcie
+        button.click();
+
+        // Event kliknięcia
         const mouseEvent = new MouseEvent('click', {
             bubbles: true,
             cancelable: true,
             view: button.ownerDocument.defaultView
         });
         button.dispatchEvent(mouseEvent);
-        logInfo("Wykonano kliknięcie przez MouseEvent");
-    } catch (e) {
-        logError("Błąd podczas symulacji zdarzenia myszy: " + e);
-    }
-}
 
-function performInnerElementClick(button) {
-// Funkcja klikająca wewnętrzny element (często używany w SAP UI5)
-    try {
+        // Kliknięcie wewnętrznego elementu (typowe dla SAP UI5)
         const innerElement = button.querySelector('[id$="-inner"]');
         if (innerElement) {
             innerElement.click();
-            logInfo("Wykonano kliknięcie na wewnętrznym elemencie");
         }
+
+        // Wykonanie skryptu w kontekście dokumentu
+        executeClickScript(button);
     } catch (e) {
-        logError("Błąd podczas klikania wewnętrznego elementu: " + e);
+        log("Błąd podczas klikania przycisku: " + e, true);
     }
 }
 
-function performScriptExecution(button) {
-// Funkcja wykonująca skrypt bezpośrednio w kontekście dokumentu
+// Pomocnicza funkcja do wykonania skryptu klikającego
+function executeClickScript(button) {
     try {
         const doc = button.ownerDocument;
-        const script = doc.createElement('script');
         const buttonId = button.id;
-        script.textContent = createButtonClickScript(buttonId);
+        const script = doc.createElement('script');
+
+        script.textContent = `
+            (function() {
+                try {
+                    var btn = document.getElementById('${buttonId}');
+                    if (btn) {
+                        btn.click();
+                        
+                        if (window.sap && window.sap.ui) {
+                            var control = sap.ui.getCore().byId('${buttonId}');
+                            if (control && typeof control.firePress === 'function') {
+                                control.firePress();
+                            }
+                        }
+                    }
+                } catch(e) {
+                    console.error('Błąd w skrypcie kliknięcia:', e);
+                }
+            })();
+        `;
 
         doc.body.appendChild(script);
         doc.body.removeChild(script);
-        logInfo("Wykonano skrypt bezpośrednio w dokumencie");
     } catch (e) {
-        logError("Błąd podczas wykonywania skryptu w dokumencie: " + e);
+        log("Błąd wykonywania skryptu: " + e, true);
     }
 }
 
-function createButtonClickScript(buttonId) {
-// Funkcja przygotowująca skrypt do wykonania kliknięcia
-    return `
-        (function() {
-            try {
-                var btn = document.getElementById('${buttonId}');
-                if (btn) {
-                    console.log('Znaleziono przycisk w skrypcie');
-                    btn.click();
-                    
-                    // Próba wywołania zdarzenia SAP UI5 (jeśli dostępne)
-                    if (window.sap && window.sap.ui) {
-                        var control = sap.ui.getCore().byId('${buttonId}');
-                        if (control && typeof control.firePress === 'function') {
-                            control.firePress();
-                            console.log('Wywołano firePress na kontrolce SAP UI5');
-                        }
-                    }
-                }
-            } catch(e) {
-                console.error('Błąd w skrypcie kliknięcia:', e);
-            }
-        })();
-    `;
+// Bezpieczne pobieranie dokumentu z iframe
+function getIframeDocument(iframe) {
+    try {
+        return iframe.contentDocument || (iframe.contentWindow && iframe.contentWindow.document);
+    } catch (e) {
+        return null;
+    }
 }
 
-function createBackground() {
-    const background = document.createElement('div');
-    background.id = 'myModal';
-    background.style.display = 'none';
-    background.style.position = 'fixed';
-    background.style.zIndex = '1';
-    background.style.left = '0';
-    background.style.top = '0';
-    background.style.width = '100%';
-    background.style.height = '100%';
-    background.style.overflow = 'auto';
-    background.style.backgroundColor = 'rgba(0, 0, 0, 0.5)';
-    background.style.display = 'block';
-    return background;
-}
-
-function createModalContent() {
-    const modalContent = document.createElement('div');
-    modalContent.style.backgroundColor = '#aaaaaa';
-    modalContent.style.margin = '4% auto';
-    modalContent.style.padding = '20px';
-    modalContent.style.border = '1px solid #888';
-    modalContent.style.width = '645px';
-    modalContent.style.borderRadius = '2rem';
-    return modalContent;
-}
-
-function createCloseModal() {
-    const closeModal = document.createElement('span');
-    closeModal.innerHTML = '&times;';
-    closeModal.style.cursor = 'pointer';
-    closeModal.style.float = 'right';
-    closeModal.style.fontSize = '28px';
-    closeModal.style.fontWeight = 'bold';
-    return closeModal;
-}
-
-function createIframeContainer() {
-    const iframeContainer = document.createElement('div');
-    iframeContainer.id = 'iframeContainer';
-    iframeContainer.style.position = 'relative';
-    return iframeContainer;
-}
-
-function createIframe(src) {
-    const iframe = document.createElement('iframe');
-    iframe.id = 'iframe';
-    iframe.src = src;
-    iframe.style.width = '100%';
-    iframe.style.height = '460px';
-    iframe.style.border = 'none';
-    iframe.style.borderRadius = '1.5rem';
-    return iframe;
-}
-
-function handleContentContainerStyle(iframe) {
-    const checkContentContainer = setInterval(() => {
-        try {
-            const iframeDocument = iframe.contentDocument || iframe.contentWindow.document;
-            if (iframeDocument) {
-                const contentContainer = iframeDocument.getElementById('contentContainer');
-                if (contentContainer) {
-                    contentContainer.style.margin = '20px';
-                    contentContainer.style.border = '0px';
-                    contentContainer.style.background = 'none';
-                    clearInterval(checkContentContainer);
-                }
-            }
-        } catch (e) {
-            logError('Error accessing iframe content: ' + e);
-            clearInterval(checkContentContainer);
-        }
-    }, 500);
-}
-
-function handleCloseModalClick(background, iframeContainer) {
+// Zamknięcie modalu i wyczyszczenie zasobów
+function closeModalAndCleanup(background, iframeContainer) {
     background.style.display = 'none';
     iframeContainer.innerHTML = '';
-    logInfo("Modal został zamknięty przez przycisk X");
+    cleanupIntervals();
+    log("Modal został zamknięty");
 }
 
-function setupAcceptButtonListener(iframe, background, iframeContainer) {
-    const checkButtonListeners = setInterval(() => {
-        try {
-            const iframeDocument = iframe.contentDocument || iframe.contentWindow.document;
-            const dialogs = iframeDocument.querySelectorAll('.dialogBoxWrapper');
-            if (iframeDocument && dialogs.length > 0) {
-                const dialog = dialogs[0];
-                const buttons = dialog.querySelectorAll('.globalPrimaryButton');
-                if (buttons.length > 0) {
-                    addClickListenerToButtons(buttons, background, iframeContainer, dialog);
-                }
-            }
-        } catch (e) {
-            logError('Cannot add listener: ' + e);
-            clearInterval(checkButtonListeners);
-        }
-    }, 300);
+// Znajdź i zamknij modal
+function cleanupAndCloseModal() {
+    const background = document.getElementById('myModal');
+    const iframeContainer = document.getElementById('iframeContainer');
+
+    if (background) background.style.display = 'none';
+    if (iframeContainer) iframeContainer.innerHTML = '';
+
+    cleanupIntervals();
 }
 
-function addClickListenerToButtons(buttons, background, iframeContainer, dialog) {
-    buttons.forEach(button => {
-        if (button.name !== "OK" && button.name !== "Upload") {
-            if (button.name === "Submit") {
-                button.addEventListener('click', () => {
-                    waitForDialogClose(dialog, background, iframeContainer);
-                });
-            } else {
-                button.addEventListener('click', () => handleCloseModalClick(background, iframeContainer));
-            }
+// Wyczyść wszystkie interwały
+function cleanupIntervals() {
+    Object.keys(intervals).forEach(key => {
+        if (intervals[key]) {
+            clearInterval(intervals[key]);
+            intervals[key] = null;
         }
     });
 }
 
-function waitForDialogClose(dialog, background, iframeContainer) {
-    const checkDialogClosed = setInterval(() => {
-        if (!document.body.contains(dialog)) {
-            clearInterval(checkDialogClosed);
-            handleCloseModalClick(background, iframeContainer);
-        }
-    }, 300);
-}
-
-function handleWindowClick(event, background, iframeContainer) {
-    if (event.target === background) {
-        handleCloseModalClick(background, iframeContainer);
-    }
-}
-
-function handleIframeLoad(iframe) {
-    logInfo("Iframe załadowany, rozpoczynam sekwencję kliknięć");
-    setTimeout(() => startClickSequence(iframe), 800);
-}
-
+// Inicjalizacja
 createModal();
