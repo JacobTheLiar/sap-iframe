@@ -393,7 +393,6 @@ function createIframeContainer() {
     const iframeContainer = document.createElement('div');
     iframeContainer.id = 'iframeContainer';
     iframeContainer.style.position = 'relative';
-    // iframeContainer.style.height = 'calc(100% - 50px)';  // Pozostaw miejsce na przycisk zamknięcia
     return iframeContainer;
 }
 
@@ -402,7 +401,7 @@ function createIframe(src) {
     iframe.id = 'iframe';
     iframe.src = src;
     iframe.style.width = '100%';
-    iframe.style.height = '420px';
+    iframe.style.height = '450px';
     iframe.style.border = 'none';
     iframe.style.borderRadius = '1.5rem';
     return iframe;
