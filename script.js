@@ -402,7 +402,7 @@ function createIframe(src) {
     iframe.id = 'iframe';
     iframe.src = src;
     iframe.style.width = '100%';
-    iframe.style.height = '390px';
+    iframe.style.height = '420px';
     iframe.style.border = 'none';
     iframe.style.borderRadius = '1.5rem';
     return iframe;
