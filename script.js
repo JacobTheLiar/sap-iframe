@@ -41,7 +41,10 @@
 
         const closeModal = document.createElement('span');
         closeModal.innerHTML = '&times;';
-        closeModal.style.cssText = 'cursor: pointer; float: right; font-size: 28px; font-weight: bold;';
+        closeModal.style.cssText = 'cursor: pointer; float: right; font-size: 28px; font-weight: bold; padding: 0 10px; z-index: 100; position: relative;';
+        closeModal.setAttribute('role', 'button');
+        closeModal.setAttribute('tabindex', '0');
+        closeModal.setAttribute('aria-label', 'Zamknij');
 
         const iframeContainer = document.createElement('div');
         iframeContainer.id = 'iframeContainer';
@@ -60,7 +63,42 @@
         iframeContainer.appendChild(iframe);
 
         // Obsługa zdarzeń
-        closeModal.addEventListener('click', () => closeModalAndCleanup(background, iframeContainer));
+        // Używamy większej liczby zdarzeń dla przycisku zamykania
+        closeModal.onclick = function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            log("Kliknięto przycisk zamykania (onclick)");
+            closeModalAndCleanup(background, iframeContainer);
+        };
+
+        closeModal.addEventListener('click', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            log("Kliknięto przycisk zamykania (addEventListener)");
+            closeModalAndCleanup(background, iframeContainer);
+        }, false);
+
+        // Dodajemy obsługę klawiatury (Enter/Space)
+        closeModal.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                log("Naciśnięto Enter/Space na przycisku zamykania");
+                closeModalAndCleanup(background, iframeContainer);
+            }
+        });
+
+        // Dodajemy wyraźne podświetlenie przy najechaniu
+        closeModal.addEventListener('mouseover', function() {
+            this.style.color = 'red';
+            this.style.transform = 'scale(1.2)';
+            this.style.transition = 'all 0.2s';
+        });
+
+        closeModal.addEventListener('mouseout', function() {
+            this.style.color = '';
+            this.style.transform = '';
+        });
+
         background.addEventListener('click', (event) => {
             if (event.target === background) {
                 closeModalAndCleanup(background, iframeContainer);
